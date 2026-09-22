@@ -36,6 +36,7 @@ final class WorldRenderer {
         Level level = w.level;
         levelView.draw(g, level, view, w.time);
         for (Level.Door door : level.doors) if (door.sealed && view.intersects(door.gap)) drawSealedLabel(g, door);
+        if (level.town) drawForestPath(g, w);
         for (Zone z : w.zones) drawZone(g, w, z);
         for (Blast b : w.blasts) drawBlast(g, w, b);
         for (Enemy e : w.enemies) drawTelegraph(g, e, w.player);
@@ -46,9 +47,16 @@ final class WorldRenderer {
             items.add(new Item(s.y() + 36, () -> drawShop(g, w, s)));
             shadow(g, s.x(), s.y() + 36, 46, 12);
         }
-        if (level.guideAppeared) {
+        if (level.town) {                                       // the station is always there, just shuttered until level 1 is done
+            items.add(new Item(level.guideY + 44, () -> drawStation(g, w)));
+            shadow(g, level.guideX, level.guideY + 46, 40, 12);
+        } else if (level.guideAppeared) {
             items.add(new Item(level.guideY + 20, () -> drawGuide(g, w)));
             shadow(g, level.guideX, level.guideY + 22, 22, 7);
+        }
+        for (Level.Npc npc : level.npcs) {
+            items.add(new Item(npc.y() + 20, () -> drawNpc(g, w, npc)));
+            shadow(g, npc.x(), npc.y() + 22, 16, 6);
         }
         for (Level.Landmark l : level.landmarks) {
             if (!view.intersects(l.x() - 140, l.y() - 240, 280, 300)) continue;
@@ -256,6 +264,52 @@ final class WorldRenderer {
         if (w.guideNearby() && w.state == World.State.PLAYING) {
             g.setFont(f14b);
             centered(g, "Press E to travel to the next level", x, y + 52, Color.WHITE);
+        }
+    }
+
+    /** Transit Town's train station: always standing there, shuttered until level 1 is done, then lit up and ready to go. */
+    private void drawStation(Graphics2D g, World w) {
+        Level lv = w.level;
+        double x = lv.guideX, y = lv.guideY;
+        boolean open = lv.guideAppeared;
+        if (open) {
+            double r = 46 + 4 * Math.sin(w.time * 3);
+            g.setColor(Util.alpha(new Color(255, 214, 110), 0.4));
+            g.setStroke(new BasicStroke(2.5f));
+            g.draw(new Ellipse2D.Double(x - r, y + 44 - r * 0.3, r * 2, r * 0.6));
+        }
+        Art.frame(open ? "station.open" : "station.closed", w.time, 2.2).draw(g, x, y + 44, Art.SCALE, false);
+        g.setFont(f12);
+        centered(g, "TRAIN STATION", x, y - 92, open ? new Color(255, 214, 110) : new Color(170, 170, 182));
+        if (!open) {
+            g.setFont(f14b);
+            centered(g, "Closed for now", x, y + 108, new Color(190, 190, 200));
+        } else if (w.guideNearby() && w.state == World.State.PLAYING) {
+            g.setFont(f14b);
+            centered(g, "Press E to catch the train", x, y + 108, Color.WHITE);
+        }
+    }
+
+    // ------------------------------------------------------------------ Transit Town: the locals and the way out
+
+    private void drawNpc(Graphics2D g, World w, Level.Npc npc) {
+        Sprite s = Art.frame(npc.portrait(), w.time + npc.x() * 0.01, 1.8);
+        s.draw(g, npc.x(), npc.y() + 20, Art.SCALE, false);
+        if (w.npcNearby() == npc && w.state == World.State.PLAYING && !w.dialogue.active()) {
+            g.setFont(f14b);
+            centered(g, "Press E to talk", npc.x(), npc.y() + 58, Color.WHITE);
+        }
+    }
+
+    /** No sprite, just the promise of trees (see the landmarks placed around it in {@link Level#town}) and a prompt up close. */
+    private void drawForestPath(Graphics2D g, World w) {
+        Level lv = w.level;
+        double x = lv.forestX, y = lv.forestY;
+        g.setFont(f12);
+        centered(g, "TO THE FOREST", x, y - 44, new Color(150, 210, 140));
+        if (w.forestPathNearby() && w.state == World.State.PLAYING) {
+            g.setFont(f14b);
+            centered(g, "Press E to head into the forest", x, y + 34, Color.WHITE);
         }
     }
 

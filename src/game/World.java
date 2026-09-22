@@ -49,6 +49,12 @@ final class World {
     int chapterCursor;
     /** Character level Select Chapter starts you at, fully skilled up for that stage of the game. */
     static final int CHAPTER_SELECT_LEVEL = 15;
+    /** True once level 1 is cleared: Transit Town's train station opens, and its guide field means the station instead. */
+    boolean stationOpen;
+    /** Counts down after level 1's boss dies; at zero you're back in Transit Town. */
+    double townReturnTimer;
+    /** A short line from a friendly face in Transit Town — its own little dialogue box, separate from the tutorial's. */
+    final Dialogue dialogue = new Dialogue();
     double shake;
     double hitStop;
     double time;
@@ -109,6 +115,9 @@ final class World {
         noticeTimer = 0;
         menuCursor = 0;
         chapterCursor = 0;
+        stationOpen = false;
+        townReturnTimer = 0;
+        dialogue.clear();
         state = State.TITLE;
     }
 
@@ -260,12 +269,33 @@ final class World {
             nextLevel();
             return;
         }
+        if (tutorial == null) {
+            dialogue.update(this, in, dt);                          // a townsfolk's line, if one is showing
+            if (dialogue.stopsWorld()) {
+                updateEffects(dt);
+                return;
+            }
+            Level.Npc npc = npcNearby();
+            if (in.pressed(KeyEvent.VK_E) && npc != null) dialogue.say(npc.name(), npc.portrait(), Snd.TOWN_TALK, npc.line());
+            if (in.pressed(KeyEvent.VK_E) && forestPathNearby()) {
+                stage = 0;
+                enterLevel();
+                return;
+            }
+        }
         if (hitStop > 0) {           // brief freeze on impact
             hitStop -= dt;
             // attack / menu / roll presses made during the freeze must not be lost: keep them for when it ends
             in.carryOver(KeyEvent.VK_ENTER, KeyEvent.VK_SPACE, KeyEvent.VK_UP, KeyEvent.VK_DOWN, KeyEvent.VK_LEFT,
                 KeyEvent.VK_RIGHT, KeyEvent.VK_BACK_SPACE);
             return;
+        }
+        if (townReturnTimer > 0) {   // the beat after level 1's boss dies, before you're whisked back to Transit Town
+            townReturnTimer -= dt;
+            if (townReturnTimer <= 0) {
+                enterTown();
+                return;
+            }
         }
 
         time += dt;
@@ -626,16 +656,23 @@ final class World {
         if (level.clearedRoomCount() == level.combatRoomCount()) {
             boolean more = stage + 1 < Level.COUNT;
             banner = more ? "LEVEL CLEARED" : "GAME CLEARED";
-            if (more) {
+            if (more && stage == 0) {                              // the whispering forest: back to Transit Town, not a guide in the hub
+                stationOpen = true;
+                notice = "THE TRAIN STATION IS NOW OPEN";
+                noticeHint = "Back to Transit Town.";
+                townReturnTimer = 3.0;
+                sound(Snd.GUIDE_APPEAR, 2.8);
+            } else if (more) {
                 level.guideAppeared = true;
                 notice = "A GUIDE HAS APPEARED IN THE HUB";
                 noticeHint = "Talk to them to travel to the next level.";
+                sound(Snd.GUIDE_APPEAR, 2.8);                       // after the boss has finished dying
             } else {
                 notice = "YOU'VE CLEARED EVERY LEVEL!";
                 noticeHint = "";
+                sound(Snd.GAME_CLEARED, 2.8);
             }
             noticeTimer = 7;
-            sound(more ? Snd.GUIDE_APPEAR : Snd.GAME_CLEARED, 2.8);          // after the boss has finished dying
         }
         else if (bossWasSealed && level.bossUnlocked()) {
             banner = "BOSS DOOR UNLOCKED";
@@ -685,10 +722,22 @@ final class World {
 
     // ------------------------------------------------------------------ menus
 
-    /** True when the guide has appeared and you're standing next to them. */
+    /** True when the guide (in Transit Town, the train station) has appeared and you're standing next to them. */
     boolean guideNearby() {
         return level.guideAppeared && activeRoom == null
             && Util.dist(player.x, player.y, level.guideX, level.guideY) <= STATION_RANGE;
+    }
+
+    /** The friendly local within reach in Transit Town, or null. */
+    Level.Npc npcNearby() {
+        if (activeRoom != null) return null;
+        for (Level.Npc n : level.npcs) if (Util.dist(player.x, player.y, n.x(), n.y()) <= STATION_RANGE) return n;
+        return null;
+    }
+
+    /** Standing at the path out of Transit Town into the forest (level 1). */
+    boolean forestPathNearby() {
+        return level.town && activeRoom == null && Util.dist(player.x, player.y, level.forestX, level.forestY) <= STATION_RANGE;
     }
 
     /**
@@ -704,6 +753,18 @@ final class World {
     /** Arrive in the current {@link #stage}'s level: healed, in its hub, with the level's name across the screen. */
     private void enterLevel() {
         level = Level.create(stage);
+        arrive();
+    }
+
+    /** Back to (or into, from the tutorial) Transit Town: healed, at the town square, the station open if level 1 is behind you. */
+    private void enterTown() {
+        level = Level.town();
+        level.guideAppeared = stationOpen;
+        arrive();
+    }
+
+    /** The part every arrival shares, wherever {@link #level} now points: a clean slate, healed, at the spawn point. */
+    private void arrive() {
         activeRoom = null;
         enemies.clear();
         arrivals.clear();
@@ -712,6 +773,7 @@ final class World {
         zones.clear();
         effects.clear();
         lockTarget = null;
+        dialogue.clear();
         player.x = level.spawnX;
         player.y = level.spawnY;
         player.hp = player.maxHp;
@@ -741,13 +803,12 @@ final class World {
         state = State.PLAYING;
     }
 
-    /** The story is over: on to level 1, exactly as the game has always started (the hero keeps nothing but their sword and a Fireball). */
+    /** The story is over: not level 1 just yet — Transit Town first, where the path into the forest is waiting. */
     void finishTutorial() {
         tutorial = null;
         focusX = focusY = Double.NaN;
-        stage = 0;
         sound(Snd.TRAVEL);
-        enterLevel();
+        enterTown();
     }
 
     /** The trainer you're standing next to (they only exist in the safe hub), or null. */

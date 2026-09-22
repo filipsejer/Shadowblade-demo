@@ -63,8 +63,9 @@ Both screens are built in `World.updateTitle` / `World.updateChapterSelect` / `W
 
 | File | What it does |
 | --- | --- |
-| `Level.java` | The maps: rooms, corridors (doors), the trainers, the guide's spot, the sealed boss door, and walkable-area collision. `Level.create(n)` builds level n (`levelOne()`, `levelTwo()`), `Level.tutorial()` the opening story's map |
-| `Tutorial.java` / `Dialogue.java` | The opening story: the script (each lesson is a scene with the squirrel) and the speech box's rules (typewriter text, lines that wait for a key or are called out, the voice's chirps) |
+| `Level.java` | The maps: rooms, corridors (doors), the trainers, the guide's spot, the sealed boss door, and walkable-area collision. `Level.create(n)` builds level n (`levelOne()`, `levelTwo()`), `Level.tutorial()` the opening story's map, `Level.town()` Transit Town |
+| `Tutorial.java` / `Dialogue.java` | The opening story: the script (each lesson is a scene with the squirrel) and the speech box's rules (typewriter text, lines that wait for a key or are called out, the voice's chirps); `Dialogue` is reused as-is for Transit Town's locals |
+| `TownArt.java` | Transit Town's three locals and the train station, shuttered and lit |
 | `Breakable.java` / `BreakableArt.java` | The crates and barrels: their rules (solid, one hit, XP) and their sprites in a forest, city and laboratory look |
 | `SquirrelArt.java` | The squirrel's sprites (sitting, running, frightened, throwing) and its acorn |
 | `World.java` | Game state and rules: entering rooms spawns enemies and locks doors, collisions, XP / level-ups, menus |
@@ -113,11 +114,32 @@ your hero (W A S D, SPACE, ENTER, SHIFT + ENTER) and light up under the keys you
 3. **Attack.** A small forest enemy rustles out of the bushes and the squirrel bolts into the brambles, shouting advice from behind them. The doors lock and the fight music starts. The first sword hit makes the monster curl into a thorny shell.
 4. **Magic.** Swords bounce off the shell, and the monster stops fighting, so the only way on is a spell: the Magic command appears, pulsing, and a Fireball cracks the shell open.
 5. **The search.** The squirrel is scared of you now and hides in the next rooms (the trail, the stream); it bolts when you get within about 300 pixels, and you finally corner it in the hollow.
-6. **Goodbye.** It says you are dangerous and must find your own people. The screen fades out and you arrive in level 1's hub exactly as the game has always started (the tutorial gives no XP, so you are still level 1).
+6. **Goodbye.** It says you are dangerous and must find your own people. The screen fades out and you arrive in **Transit Town** (see below), not level 1 just yet — the tutorial gives no XP, so you are still level 1.
 
-Dying in the story starts it over; dying later goes to level 1. `T` on the title screen switches the story off (`./run.sh notutorial` starts with it off). Things to tune:
+Dying in the story starts it over; dying later goes to level 1's hub directly (skipping Transit Town). `T` on the title screen switches the story off (`./run.sh notutorial` starts with it off). Things to tune:
 the lines of dialogue and the timings are in `Tutorial.go()` and the scene methods below it; the monster's strength is in `Tutorial.go(ALARM)`; how many acorns you must dodge is `Tutorial.DODGES_NEEDED`;
 how close you may get before the squirrel runs is `Tutorial.SEARCH_FLEE_DISTANCE`; the shell is `Enemy.curlUp()` / `Enemy.breakShell()` (`shellOnHit` switches it on for one enemy).
+
+## Transit Town
+
+A friendly hub (in the spirit of Traverse Town) between the opening story and level 1: no enemies anywhere, five open areas to wander —
+the town square you arrive in, an old quarter to the east with the locals, a back alley off that, a quiet fountain square to the north,
+and the edge of the woods to the west — all built by `Level.town()`. There is no minimap "rooms cleared" count and no trainers here; it
+exists purely to give the story somewhere to land you, and later to be the way back into the run.
+
+- **Three chatty locals** (an old traveller, a merchant, a child — `TownArt.java`) stand around town. Walk up to one and press **E** for
+  one short, unimportant line — its own small dialogue box (`World.dialogue`, the same `Dialogue` class the opening story uses, just with
+  its own blip and its own accent colour). Nothing about them matters mechanically; they're flavour.
+- **The path into the forest** is a marked spot at the western edge of town (`Level.forestX/forestY`, with a couple of trees crowding in
+  around it). Stand on it and press **E** to head into level 1 — this is the *only* way into level 1 the first time; there is no guide for it.
+- **The train station** stands in the square from the start, shuttered and dark (`station.closed`), with a "Closed for now" label. It's the
+  same spot every other level's guide would appear at (`Level.guideX/guideY`, `Level.guideAppeared` — repurposed here rather than duplicated),
+  so it already gets a green marker on the minimap for free once it opens.
+- **Beating level 1's boss** does *not* bring a guide to level 1's own hub the way every other level's boss does. Instead, the station opens
+  (`World.stationOpen`), a short beat plays out (`World.townReturnTimer`, about three seconds) and you're brought straight back to Transit
+  Town, station lit up (`station.open`) and ready. Stand by it and press **E** — exactly like any other guide — to travel on to level 2.
+- **Levels 2 and 3 are unchanged**: their bosses still bring a guide to their own hub as always, with no detour through Transit Town.
+  Transit Town is only ever visited twice: once after the story, once after level 1.
 
 ## Graphics engine
 
@@ -201,6 +223,7 @@ first number in `Snd.java`. Default volumes are in `AudioSettings.java`; the sav
 - **Shade timing:** `SHADOW_PERIOD` in `Enemy.java` (seconds per mode).
 - **Level difficulty:** the multipliers passed to `finish(...)` at the end of each level method in `Level.java`: health and damage for big enemies (brutes, the boss), then separately for small ones (grunts, runners, shooters, shades).
 - **The boss:** the `BOSS` entry in `Enemy.Type` for its stats, and `updateBoss()` / `fireBurst()` in `Enemy.java` for its attacks. The final boss's two-stage fight is `Enemy.enterFinalStage()` (triggered from `World.collectDead()`, which is what turns his "killing" blow into a stage change instead) plus the `phase2`/`chargeCd` handling in `updateBoss()`; `Enemy.CHARGE_SPEED` tunes his stage-two dash.
+- **Transit Town:** its layout and furniture are all in `Level.town()`; the locals' lines are right there too. How long the beat lasts between level 1's boss dying and landing back in town is `World.townReturnTimer`'s starting value, set in `World.endCombat()`.
 
 ## Levels, skill points and the trainers
 
@@ -237,7 +260,8 @@ there is a branch of rooms going north, east and south, and the boss room is to 
 - **Levels.** Beating a level's boss makes a **guide** (a friendly cloaked traveller with a lantern) appear in the hub. Stand next to them and
   press **E** to travel to the next level. You keep everything: character level, skill points, spells, stats. The hub
   comes with you (same size, same three trainers in the same places); only the rooms around it change, and you arrive
-  fully healed. Level 2 has a different shape (longer trails, a 4-room tower to the north, the boss room to the **east**),
+  fully healed. Level 1 is the exception — its boss sends you back to **Transit Town** instead (see above), and the
+  train station there takes you on to level 2. Level 2 has a different shape (longer trails, a 4-room tower to the north, the boss room to the **east**),
   tougher enemies and its own boss, the Warden. It is the city: Market, Workshop, Storeroom, Library, Observatory, Archive, Greenhouse, Kitchen, Pantry and Cold Store. Brutes and the boss have 1.35x health and 1.2x damage there; the small
   enemies (grunts, runners, shooters) have 1.9x health and 1.5x damage. After the last level's boss the game says
   GAME CLEARED. Dying restarts the whole run from level 1.
