@@ -571,38 +571,43 @@ final class Level {
     }
 
     /**
-     * A prototype built from a hand-drawn sketch: a train station, down two flights of narrow stairs to a deck and
-     * a grassy landing, then a small plaza with a mission-giver off to one side. No enemies anywhere — reachable
-     * from Select Chapter's extra row, not part of the real game's three levels. A few things in the sketch don't
-     * have a real content system to hook into yet, so they're stood in with the closest existing piece rather than
-     * faked: the planters are plain bush landmarks, the "blocked off until missions are done" deck is left open
-     * (there's no mission-flag system to gate it on), and the kid's line is a placeholder (no minigame exists).
-     * The plaza's mission spot is a flush, off-centre extra piece of the plaza itself (via {@link Builder#extend}),
-     * not a centred corridor — the sketch draws it jutting off one side, which is exactly what {@code extend()} is
-     * for and {@code attach()} can't do.
+     * A prototype built from a hand-drawn sketch — the second, clearer pass at it, where every piece (the entrance,
+     * both stairs, the blocked-off deck, the grass, the plaza and the NPC's spot) is drawn touching the next with no
+     * door between any of them: one continuously-shaped room, not several rooms joined by corridors. That's exactly
+     * what {@link Builder#extend} is for, so the whole thing is one {@link Room} built from six glued pieces,
+     * rather than the separate attach()-linked rooms an earlier pass at this used. No enemies anywhere — reachable
+     * from Select Chapter's extra row, not part of the real game's three levels.
+     * <p>A couple of things in the sketch don't have a real content system to hook into yet, so they're stood in
+     * with the closest existing piece rather than faked: the orange barricade in the deck is a row of plain (and,
+     * per the sketch, deliberately walk-through — {@code radius} 0) log landmarks standing in for a real barricade
+     * sprite that would later be removed once a mission-flag system exists to gate it on; the blue marks (a scene
+     * transition, Kingdom-Hearts-style — this game has no scene switching at all right now, it's one continuous
+     * map, see the top of this file) are just placeholder landmarks at the sketched spots, not an actual portal.
      */
     static Level protoSketch() {
         Builder b = new Builder();
-        Room station = b.start("TRAIN STATION", 900, 520, new Roster());
-        Room deck = b.attach(station, Dir.SOUTH, "UPPER DECK", 850, 500, new Roster(), 150, 140);
-        Room grass = b.attach(deck, Dir.SOUTH, "GRASS", 550, 380, new Roster(), 150, 140);
-        Room plaza = b.attach(grass, Dir.SOUTH, "SMALL PLAZA", 900, 620, new Roster());
-        b.extend(plaza, 900, 400, 420, 220);   // flush against the plaza's right wall, low down — the NPC's spot
+        Room area = b.start("PROTOTYPE AREA", 900, 300, new Roster());   // the entrance, with the grassy band along its top
+        b.extend(area, 0, 300, 900, 130);                    // the first stairs, full width, straight down from the entrance
+        b.extend(area, 0, 430, 850, 290);                    // the blocked-off deck / walking platform
+        b.extend(area, 0, 720, 820, 130);                    // the second stairs
+        b.extend(area, -130, 850, 950, 580);                 // the grass landing and the small plaza, shifted west a little
+        b.extend(area, 820, 1210, 420, 220);                 // flush against the plaza's right wall, low down — the NPC's spot
         List<Door> doors = b.finish();
 
-        Rectangle2D.Double st = station.bounds;
-        Level level = new Level(b.rooms, doors, List.of(), st.getCenterX(), st.getCenterY() + 120, st.getCenterX(), st.y + 150);
+        Rectangle2D.Double origin = area.parts.get(0);
+        Level level = new Level(b.rooms, doors, List.of(), origin.x + 450, origin.y + 200, origin.x + 450, origin.y + 110);
         level.name = "PROTOTYPE";
         level.bossName = "";
         level.theme = Theme.CITY;
-        level.hasStation = true;   // reuses Transit Town's shuttered station building for the "Train Station" room, no new art needed
+        level.hasStation = true;   // reuses Transit Town's shuttered station building by the entrance, no new art needed
 
-        level.landmarks.add(new Landmark("bush", st.x + 130, st.y + 90, 0));       // planters
-        level.landmarks.add(new Landmark("bush", st.getMaxX() - 130, st.y + 90, 0));
-        level.landmarks.add(new Landmark("bush", grass.bounds.x + 90, grass.bounds.getCenterY(), 0));
-        level.landmarks.add(new Landmark("bush", grass.bounds.getMaxX() - 90, grass.bounds.getCenterY(), 0));
+        // the barricade: a row of non-solid landmarks across the deck (parts.get(2)), so it can be walked straight through for now
+        for (double dy : new double[]{480, 575, 670}) level.landmarks.add(new Landmark("log", origin.x + 432, origin.y + dy, 0));
+        // the two "scene transition" spots: placeholder marks only, until there's an actual scene system to send them to
+        level.landmarks.add(new Landmark("stump", origin.x + 464, origin.y + 20, 0));
+        level.landmarks.add(new Landmark("stump", origin.x - 115, origin.y + 1176, 0));
 
-        Rectangle2D.Double npcSpot = plaza.parts.get(1);
+        Rectangle2D.Double npcSpot = area.parts.get(5);
         level.npcs.add(new Npc("KID", "town.child.idle",
             "Bet you can't hit that lamppost from here! (Placeholder - no mission system to hook this up to yet.)",
             npcSpot.getCenterX(), npcSpot.getCenterY()));
