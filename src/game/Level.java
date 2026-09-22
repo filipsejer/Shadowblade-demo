@@ -641,13 +641,16 @@ final class Level {
         level.bossName = "";
         level.theme = Theme.CITY;
 
-        // planters: solid, walked around, at the top of the entrance
-        level.landmarks.add(new Landmark("bush", en.x + 130, en.y + 60, 26));
-        level.landmarks.add(new Landmark("bush", en.getMaxX() - 130, en.y + 60, 26));
-        // the grass/planter patch in the plaza's top-left corner
-        level.landmarks.add(new Landmark("bush", pz.x + 140, pz.y + 100, 26));
-        level.landmarks.add(new Landmark("bush", pz.x + 210, pz.y + 160, 26));
-        level.landmarks.add(new Landmark("bush", pz.x + 110, pz.y + 180, 26));
+        // planters: solid (you walk around them, like a crate) — a row along the entrance's top wall, flanking the
+        // doorway up to the train station, same as the green band in the sketch (there's no dedicated planter
+        // sprite, so these reuse the bush art, per instruction)
+        for (double x : new double[]{en.x + 110, en.x + 180, en.getMaxX() - 180, en.getMaxX() - 110}) {
+            level.landmarks.add(new Landmark("bush", x, en.y + 55, 24));
+        }
+        // the grass/planter bed in the plaza's top-left corner, four bushes close together so it reads as one bed
+        for (double[] p : new double[][]{{pz.x + 120, pz.y + 110}, {pz.x + 180, pz.y + 110}, {pz.x + 120, pz.y + 165}, {pz.x + 180, pz.y + 165}}) {
+            level.landmarks.add(new Landmark("bush", p[0], p[1], 22));
+        }
         // the barricade: a walk-through row of logs across the deck
         for (double dy : new double[]{dk.y + 30, dk.getCenterY(), dk.getMaxY() - 30}) {
             level.landmarks.add(new Landmark("log", dk.x + dk.width * 0.4, dy, 0));
