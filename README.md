@@ -9,6 +9,12 @@ synthesised by code too (there are no audio files): see **Sound engine** below. 
 Download [`dist/Spellblade.jar`](dist/Spellblade.jar) and double-click it (or run `java -jar Spellblade.jar` in a terminal).
 You need [Java](https://adoptium.net/) 17 or newer installed — no other setup, no install. See **Controls** below for how to play.
 
+**On a Mac**, the first time you open it Gatekeeper will say it can't verify the jar is free of malware — that's just
+because it isn't signed by a paid Apple Developer account, not a sign anything's wrong. Instead of double-clicking:
+**Control-click `Spellblade.jar` → Open → Open** (a dialog with an actual Open button shows up this time). That only
+needs doing once; after that it opens normally. If that doesn't work, **System Settings → Privacy & Security** has an
+**Open Anyway** button for it near the bottom of the page.
+
 ## Run from source
 
 ```sh
