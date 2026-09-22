@@ -70,7 +70,8 @@ final class Renderer {
         }
         if (w.tutorial != null && w.state != World.State.TITLE) drawEyelids(g, w.tutorial, width, height);
         drawHud(g, w, width, height);
-        if (w.tutorial != null && w.state == World.State.PLAYING) drawDialogue(g, w.tutorial, width, height);
+        if (w.tutorial != null && w.state == World.State.PLAYING) drawDialogue(g, w.tutorial.dialogue, SQUIRREL, width, height);
+        else if (w.dialogue.active() && w.state == World.State.PLAYING) drawDialogue(g, w.dialogue, TOWNSFOLK, width, height);
         if (w.audio.muted) {
             g.setFont(f14b);
             g.setColor(new Color(255, 200, 120, 220));
@@ -154,7 +155,14 @@ final class Renderer {
             centered(g, w.level.bossName + (lab ? "   -   STAGE " + (boss.phase2 ? 2 : 1) : ""), width / 2.0, 81, Color.WHITE);
         }
 
-        if (tut == null) {
+        if (w.level.town) {
+            minimap.draw(g, w, width);
+            g.setFont(f18b);
+            centered(g, "TRANSIT TOWN", width / 2.0, 34, Color.WHITE);
+            g.setFont(f12);
+            centered(g, w.stationOpen ? "The train station is open" : "A path somewhere here leads into the forest",
+                width / 2.0, 54, new Color(220, 220, 230));
+        } else if (tut == null) {
             minimap.draw(g, w, width);
 
             // room info
@@ -272,6 +280,7 @@ final class Renderer {
     // ------------------------------------------------------------------ dialogue
 
     private static final Color SQUIRREL = new Color(244, 170, 90);
+    private static final Color TOWNSFOLK = new Color(120, 200, 235);
 
     /** Two black lids over the screen that open as you wake up (see {@link Tutorial#eyelids}). */
     private void drawEyelids(Graphics2D g, Tutorial tut, int width, int height) {
@@ -290,8 +299,8 @@ final class Renderer {
     }
 
     /** The speech box: the speaker's face on the left, their words written out a letter at a time, a "press E" arrow when they wait for you. */
-    private void drawDialogue(Graphics2D g, Tutorial tut, int width, int height) {
-        Dialogue.Line line = tut.dialogue.current();
+    private void drawDialogue(Graphics2D g, Dialogue dialogue, Color accent, int width, int height) {
+        Dialogue.Line line = dialogue.current();
         if (line == null) return;
         double bw = Util.clamp(width - 620, 480, 780);
         double tx0 = 124, tw = bw - tx0 - 24;
@@ -317,7 +326,7 @@ final class Renderer {
         RoundRectangle2D panel = new RoundRectangle2D.Double(bx, by, bw, bh, 18, 18);
         g.setColor(new Color(26, 22, 34, 238));
         g.fill(panel);
-        g.setColor(Util.alpha(SQUIRREL, 0.9));
+        g.setColor(Util.alpha(accent, 0.9));
         g.setStroke(new BasicStroke(2.5f));
         g.draw(panel);
 
@@ -325,7 +334,7 @@ final class Renderer {
         RoundRectangle2D frame = new RoundRectangle2D.Double(bx + 14, by + 14, 92, 92, 14, 14);
         g.setColor(new Color(52, 42, 58));
         g.fill(frame);
-        g.setColor(Util.alpha(SQUIRREL, 0.7));
+        g.setColor(Util.alpha(accent, 0.7));
         g.setStroke(new BasicStroke(2f));
         g.draw(frame);
         Sprite face = Art.frame(line.portrait(), System.nanoTime() / 1e9, 2);
@@ -340,7 +349,7 @@ final class Renderer {
         String name = line.speaker();
         double tabW = fm.stringWidth(name) + 28;
         RoundRectangle2D tab = new RoundRectangle2D.Double(bx + 18, by - 17, tabW, 28, 10, 10);
-        g.setColor(SQUIRREL);
+        g.setColor(accent);
         g.fill(tab);
         g.setColor(new Color(50, 30, 18));
         g.drawString(name, (float) (bx + 32), (float) (by + 3));
@@ -351,7 +360,7 @@ final class Renderer {
         }
 
         g.setFont(f16);
-        int left = Math.min(line.text().length(), tut.dialogue.visible().length());
+        int left = Math.min(line.text().length(), dialogue.visible().length());
         double ty = by + 42;
         g.setColor(new Color(240, 238, 246));
         for (String row : rows) {
@@ -361,7 +370,7 @@ final class Renderer {
             ty += 25;
         }
 
-        if (tut.dialogue.waitingForKey()) {                                   // "E" and a bobbing arrow
+        if (dialogue.waitingForKey()) {                                       // "E" and a bobbing arrow
             double bob = 3 * Math.sin(System.nanoTime() / 2.2e8);
             g.setFont(f12);
             g.setColor(new Color(215, 205, 225));
@@ -371,7 +380,7 @@ final class Renderer {
             arrow.lineTo(bx + bw - 12, by + bh - 24 + bob);
             arrow.lineTo(bx + bw - 19, by + bh - 14 + bob);
             arrow.closePath();
-            g.setColor(SQUIRREL);
+            g.setColor(accent);
             g.fill(arrow);
         }
     }

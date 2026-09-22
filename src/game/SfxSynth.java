@@ -683,6 +683,14 @@ final class SfxSynth {
                 x.reverb(0.4, 0.55, 0.12);
                 return x;
             }
+            case TOWN_TALK -> {                                                  // a soft murmured syllable, rounder and lower than the squirrel's chirp
+                int[] notes = {60, 62, 64, 65};                                  // C D E F, around middle C
+                double f = n(notes[v % 4]);
+                Sx x = new Sx(0.14, seed);
+                x.tone(SINE, 0, 0.1, f * 0.97, f * 1.05, 1, 0.006, 0.045).tone(TRI, 0, 0.1, f * 1.5, f * 1.6, 0.2, 0.006, 0.04)
+                    .noise(BAND, 0, 0.02, 1800, 1800, 1, 0.14, 0.001, 0.006);
+                return x;
+            }
             case CITY_HORN -> {
                 Sx x = new Sx(2.2, seed);
                 double f = v == 0 ? 220 : 196;

@@ -120,7 +120,10 @@ enum Snd {
 
     // crates and barrels
     CRATE_SMASH(-16, 0.05, 3, 3),
-    BARREL_SMASH(-16, 0.05, 3, 3);
+    BARREL_SMASH(-16, 0.05, 3, 3),
+
+    // Transit Town
+    TOWN_TALK(-27, 0.045, 2, 4);
 
     final double loudDb, minGap;
     final int voices, variants;

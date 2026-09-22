@@ -102,20 +102,30 @@ final class Level {
      */
     record Landmark(String kind, double x, double y, double radius) {}
 
+    /** A friendly local standing around in Transit Town: say hello and hear one short, unimportant line. */
+    record Npc(String name, String portrait, String line, double x, double y) {}
+
     final List<Room> rooms;
     final List<Door> doors;
     final List<Station> stations;
     final List<Landmark> landmarks = new ArrayList<>();
     /** Crates and barrels to smash for XP (only the real levels have them). */
     final List<Breakable> breakables = new ArrayList<>();
+    /** Chatty townsfolk (only Transit Town has them). */
+    final List<Npc> npcs = new ArrayList<>();
     final double width, height;          // bounding box of the whole map
     final double spawnX, spawnY;         // where the player starts
-    final double guideX, guideY;         // where the guide NPC appears once this level's boss is dead
+    /** Where the guide NPC appears once this level's boss is dead — in Transit Town, this same spot is the train station. */
+    final double guideX, guideY;
     private final List<Rectangle2D.Double> walkable = new ArrayList<>();
 
     String name = "LEVEL";
     String bossName = "GUARDIAN";
     Theme theme = Theme.FOREST;
+    /** True only for {@link #town()}: the friendly hub between the opening story and level 1. */
+    boolean town;
+    /** Transit Town only: where the path out into the forest (level 1) is. */
+    double forestX, forestY;
     /** Bumped whenever doors open or close, so anything cached from the map's shape knows to rebuild. */
     int version;
     /** Health / damage multipliers for big enemies (brutes, the boss)... */
@@ -126,7 +136,10 @@ final class Level {
     double hpMult(Enemy.Type type) { return type.small() ? smallEnemyHpMult : enemyHpMult; }
 
     double damageMult(Enemy.Type type) { return type.small() ? smallEnemyDamageMult : enemyDamageMult; }
-    /** True once the boss is dead and the guide has appeared in the hub (only if there is a next level). */
+    /**
+     * True once the boss is dead and the guide has appeared in the hub (only if there is a next level). In Transit
+     * Town this instead means the train station has opened (once level 1 is behind you).
+     */
     boolean guideAppeared;
 
     Level(List<Room> rooms, List<Door> doors, List<Station> stations, double spawnX, double spawnY, double guideX, double guideY) {
@@ -417,6 +430,45 @@ final class Level {
         level.landmarks.add(new Landmark("bush", s.x + 120, s.y + 160, 0));
         level.landmarks.add(new Landmark("log", h.getMaxX() - 130, h.getCenterY() + 40, 0));
         level.landmarks.add(new Landmark("bush", h.getMaxX() - 90, h.getCenterY() - 90, 0));
+        return level;
+    }
+
+    /**
+     * Transit Town: the friendly hub between the opening story and level 1. No enemies anywhere, just the square you
+     * arrive in, an old quarter off to the east where the locals are, and the edge of the woods to the west. The train
+     * station (the same spot as every other level's "guide") stays shut until level 1 is behind you.
+     * <pre>
+     *   [ WOODS EDGE ] ---- [ TOWN SQUARE ] ---- [ OLD QUARTER ]
+     * </pre>
+     */
+    static Level town() {
+        Builder b = new Builder();
+        Room square = b.start("TOWN SQUARE", 1100, 760, new Roster());
+        Room quarter = b.attach(square, Dir.EAST, "OLD QUARTER", 900, 640, new Roster());
+        Room edge = b.attach(square, Dir.WEST, "WOODS EDGE", 800, 600, new Roster());
+        List<Door> doors = b.finish();
+        Rectangle2D.Double sq = square.bounds, oq = quarter.bounds, we = edge.bounds;
+
+        double stationX = sq.getCenterX() + 260, stationY = sq.y + 190;
+        Level level = new Level(b.rooms, doors, List.of(), sq.getCenterX(), sq.getCenterY(), stationX, stationY);
+        level.name = "TRANSIT TOWN";
+        level.bossName = "";
+        level.theme = Theme.CITY;
+        level.town = true;
+        level.forestX = we.x + 260;                                                           // far enough from the wall that its "press E" prompt, centred, never runs off the edge of the map
+        level.forestY = we.getCenterY();
+
+        level.landmarks.add(new Landmark("oak", we.x + 30, we.getCenterY() - 160, 28));       // the woods crowd in at the edge of town
+        level.landmarks.add(new Landmark("oak", we.x + 15, we.getCenterY() + 180, 30));
+        level.landmarks.add(new Landmark("bush", we.x + 75, we.getCenterY() - 50, 0));
+        level.landmarks.add(new Landmark("bush", we.x + 85, we.getCenterY() + 70, 0));
+
+        level.npcs.add(new Npc("OLD TRAVELLER", "town.elder.idle",
+            "Ah, a new face. Rest up a while before you head out there.", sq.x + 230, sq.getCenterY() - 170));
+        level.npcs.add(new Npc("MERCHANT", "town.merchant.idle",
+            "No wares today, I'm afraid - just passing through, same as you.", oq.getCenterX() - 140, oq.getCenterY()));
+        level.npcs.add(new Npc("CHILD", "town.child.idle",
+            "Everyone who comes through here ends up somewhere far away. Where will YOU go?", oq.getCenterX() + 210, oq.getMaxY() - 150));
         return level;
     }
 
