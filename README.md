@@ -50,6 +50,12 @@ a lot of MP (a full bar is about four Fireballs), MP only trickles back on its o
 hits, and each spell has its own cooldown. A failed cast (not enough MP, still cooling down, nothing to hit) leaves the
 list open and costs nothing.
 
+Two more indicators live on the character rather than in a HUD panel, so they stay wherever you're standing: a row of
+small dots under your feet lights up hit by hit to show how far through the attack chain you are, and a ring just to
+the right of you sweeps shut as your roll's cooldown charges back up — it isn't drawn at all while the roll is ready,
+and reappears the moment you use it. Both are drawn in `WorldRenderer` (`drawComboDots` / `drawRollCharge`), not
+`Renderer`'s screen-space HUD, so they scroll with the world instead of sitting fixed on screen.
+
 ## Main menu
 
 The game opens on a menu with two rows, **W / S** (or the arrows) to choose and **Enter** to confirm:

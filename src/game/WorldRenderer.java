@@ -108,7 +108,48 @@ final class WorldRenderer {
         if (lock != null) drawLockOn(g, lock);
         for (Enemy e : w.enemies) drawEnemyBar(g, w, e);
         for (Enemy e : w.enemies) if (e.stun > 0.05 && e.spawnIn <= 0 && !e.type.armored && e.hp > 0 && !e.shielded) drawDizzy(g, w, e);
+        if (tut == null || tut.showMenu()) drawComboDots(g, p);
+        if (tut == null || tut.showRoll()) drawRollCharge(g, w, p);
         if (tut != null) drawKeyHint(g, w, tut);
+    }
+
+    /** How far through the attack chain the player is: a row of pips under their feet, lit up hit by hit. */
+    private void drawComboDots(Graphics2D g, Player p) {
+        int progress = p.comboProgress();
+        double spacing = 11, y = p.y + 32;
+        double x0 = p.x - (p.comboMax - 1) * spacing / 2;
+        for (int k = 0; k < p.comboMax; k++) {
+            double dx = x0 + k * spacing;
+            Ellipse2D dot = new Ellipse2D.Double(dx - 4, y - 4, 8, 8);
+            g.setColor(k < progress ? new Color(255, 215, 90) : new Color(10, 10, 14, 210));
+            g.fill(dot);
+            g.setColor(new Color(0, 0, 0, 150));
+            g.setStroke(new BasicStroke(1f));
+            g.draw(dot);
+        }
+    }
+
+    /**
+     * The roll's cooldown: a ring beside the player that sweeps shut as it charges, then vanishes once the roll is
+     * ready again — there's nothing to show once it's off cooldown.
+     */
+    private void drawRollCharge(Graphics2D g, World w, Player p) {
+        if (p.dodgeCd <= 0) return;
+        double frac = 1 - Util.clamp(p.dodgeCd / p.dodgeCooldown, 0, 1);
+        double r = 11, cx = p.x + p.radius + 16, cy = p.y;
+        g.setColor(new Color(0, 0, 0, 130));
+        g.setStroke(new BasicStroke(4f));
+        g.draw(new Ellipse2D.Double(cx - r, cy - r, r * 2, r * 2));
+        g.setColor(new Color(215, 218, 228, 235));
+        g.setStroke(new BasicStroke(2.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.draw(new Arc2D.Double(cx - r, cy - r, r * 2, r * 2, 90, -360 * frac, Arc2D.OPEN));
+        if (w.tutorial != null && w.tutorial.focus() == Tutorial.Focus.ROLL) {
+            double k = 0.5 + 0.5 * Math.sin(w.time * 6);
+            g.setColor(new Color(255, 215, 90, (int) (110 + 130 * k)));
+            g.setStroke(new BasicStroke((float) (3 + 2.5 * k)));
+            double pr = r + 5;
+            g.draw(new Ellipse2D.Double(cx - pr, cy - pr, pr * 2, pr * 2));
+        }
     }
 
     private final java.util.Map<String, Sprite> landmarks = new java.util.HashMap<>();
