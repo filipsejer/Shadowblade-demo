@@ -116,7 +116,6 @@ final class WorldRenderer {
     /** The sprite of a placed piece of scenery (see {@link Level.Landmark}). */
     private Sprite landmark(String kind) {
         return landmarks.computeIfAbsent(kind, k -> {
-            if (k.equals("planter")) return ThemeArt.of(Theme.CITY).low[5];   // the only kind that isn't forever forest art — city furniture, not a tree
             ThemeArt a = ThemeArt.of(Theme.FOREST);
             return switch (k) {
                 case "oak" -> a.tall[0];

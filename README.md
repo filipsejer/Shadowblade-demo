@@ -328,6 +328,11 @@ with it. Rectangles glued together, plus an off-centre doorway where a corridor 
 hand-drawn map's variety — wide chambers, alcoves, jogged corridors, zigzag staircases — for a much smaller, much
 safer change.
 
+**Grass patches** (`level.grassPatches`, a plain list of rectangles) are solid ground sitting on top of a room's
+floor rather than cut out of it — real grass tiling (always forest tiling, whatever the level's own theme, the same
+idea as `Landmark`'s forest art), but you can't stand on it at all, the same as a wall, rather than a prop you walk
+around. `Level.protoSketch()` uses them for the grass either side of its entrance doorway and the bed in its plaza.
+
 ## Minimap
 
 A Kingdom Hearts 2 style radar sits in the top-right corner: a round map with a gold bezel, centred on you. The arrow in

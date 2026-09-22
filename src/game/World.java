@@ -417,6 +417,14 @@ final class World {
                 if (out != null) { e.x = out.x(); e.y = out.y(); }
             }
         }
+        for (Rectangle2D.Double g : level.grassPatches) {           // solid ground you can't walk on, e.g. a flower bed
+            Util.Vec out = aroundRect(g, player.x, player.y, player.radius);
+            if (out != null) { player.x = out.x(); player.y = out.y(); }
+            for (Enemy e : enemies) {
+                out = aroundRect(g, e.x, e.y, e.radius);
+                if (out != null) { e.x = out.x(); e.y = out.y(); }
+            }
+        }
         for (Enemy e : enemies) {
             Util.Vec v = level.clamp(e.x, e.y, e.radius);
             e.x = v.x();
@@ -447,6 +455,18 @@ final class World {
             py += perpY * side * nudge;
         }
         return new Util.Vec(px, py);
+    }
+
+    /** Where a body of radius r at (x, y) ends up when it is pushed out of a solid rectangle, or null if it is already clear of it (with r's worth of clearance all round). Pushed straight out to whichever edge is nearest. */
+    private static Util.Vec aroundRect(Rectangle2D.Double rect, double x, double y, double r) {
+        double minX = rect.x - r, maxX = rect.getMaxX() + r, minY = rect.y - r, maxY = rect.getMaxY() + r;
+        if (x <= minX || x >= maxX || y <= minY || y >= maxY) return null;
+        double left = x - minX, right = maxX - x, top = y - minY, bottom = maxY - y;
+        double m = Math.min(Math.min(left, right), Math.min(top, bottom));
+        if (m == left) return new Util.Vec(minX, y);
+        if (m == right) return new Util.Vec(maxX, y);
+        if (m == top) return new Util.Vec(x, minY);
+        return new Util.Vec(x, maxY);
     }
 
     /** Breaks a crate or barrel: splinters, a puff, a sound, and its XP floating up. */

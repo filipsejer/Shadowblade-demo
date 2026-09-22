@@ -126,9 +126,7 @@ final class Level {
 
     /**
      * A single big piece of scenery placed by hand (the tutorial's tree, its logs and bushes). {@code kind} is "oak", "bush", "boulder",
-     * "stump" or "log" (always drawn as forest art, whatever the level's theme — see {@code WorldRenderer.landmark}), or "planter"
-     * (the one kind that's actual city furniture, a terracotta planter box, for levels that want one). (x, y) is where it stands on
-     * the ground; a positive {@code radius} makes it solid.
+     * "stump" or "log"; (x, y) is where it stands on the ground; a positive {@code radius} makes it solid.
      */
     record Landmark(String kind, double x, double y, double radius) {}
 
@@ -143,6 +141,8 @@ final class Level {
     final List<Breakable> breakables = new ArrayList<>();
     /** Chatty townsfolk (only Transit Town has them). */
     final List<Npc> npcs = new ArrayList<>();
+    /** Solid, grass-covered ground you can't walk on — a flower bed, a verge — sitting on top of a room's floor rather than being cut out of it. */
+    final List<Rectangle2D.Double> grassPatches = new ArrayList<>();
     final double width, height;          // bounding box of the whole map
     final double spawnX, spawnY;         // where the player starts
     /** Where the guide NPC appears once this level's boss is dead — in Transit Town, this same spot is the train station. */
@@ -625,7 +625,8 @@ final class Level {
      * page. No enemies anywhere — reachable from Select Chapter's extra row, not part of the real game's three levels.
      * <p>The barricade is a row of plain, deliberately walk-through ({@code radius} 0) log landmarks — a stand-in for
      * real barricade art plus the mission-flag system that would one day remove it, neither of which exist yet. The
-     * planters are solid bush landmarks (you walk around them, same as a crate).
+     * green areas are {@link #grassPatches}: real grass tiling, solid ground sitting on top of the floor rather than
+     * a prop you walk around — you can't stand on it at all, same as a wall.
      */
     static Level protoSketch() {
         Builder b = new Builder();
@@ -643,16 +644,11 @@ final class Level {
         level.bossName = "";
         level.theme = Theme.CITY;
 
-        // planters: actual planter boxes (city furniture, not a tree), solid — you walk around them like a crate,
-        // not over them. A row along the entrance's top wall, flanking the doorway up to the train station, same
-        // as the green band in the sketch
-        for (double x : new double[]{en.x + 110, en.x + 180, en.getMaxX() - 180, en.getMaxX() - 110}) {
-            level.landmarks.add(new Landmark("planter", x, en.y + 55, 22));
-        }
-        // the planter bed in the plaza's top-left corner, four close together so it reads as one bed
-        for (double[] p : new double[][]{{pz.x + 120, pz.y + 110}, {pz.x + 180, pz.y + 110}, {pz.x + 120, pz.y + 165}, {pz.x + 180, pz.y + 165}}) {
-            level.landmarks.add(new Landmark("planter", p[0], p[1], 22));
-        }
+        // grass: solid ground you can't walk on, not a prop you walk around — matching the sketch's green areas
+        // exactly (a strip either side of the entrance's north doorway, and a bed in the plaza's top-left corner)
+        level.grassPatches.add(new Rectangle2D.Double(en.x + 20, en.y, 350, 90));
+        level.grassPatches.add(new Rectangle2D.Double(en.getMaxX() - 370, en.y, 350, 90));
+        level.grassPatches.add(new Rectangle2D.Double(pz.x, pz.y, 600, 110));
         // the barricade: a walk-through row of logs across the deck
         for (double dy : new double[]{dk.y + 30, dk.getCenterY(), dk.getMaxY() - 30}) {
             level.landmarks.add(new Landmark("log", dk.x + dk.width * 0.4, dy, 0));

@@ -4,8 +4,10 @@ import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.RadialGradientPaint;
+import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.Shape;
+import java.awt.TexturePaint;
 import java.awt.geom.Area;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
@@ -67,6 +69,16 @@ final class LevelView {
         @Override protected boolean removeEldestEntry(Map.Entry<String, BufferedImage> eldest) { return size() > 26; }
     };
     private static final Map<Long, BufferedImage> GLOWS = new HashMap<>();
+    private static TexturePaint grass;
+
+    /** Real grass tiling, regardless of the level's own theme — for a grass patch dropped into a city or lab level. */
+    private static TexturePaint grassPaint() {
+        if (grass == null) {
+            BufferedImage tile = ThemeArt.of(Theme.FOREST).ground[0];
+            grass = new TexturePaint(tile, new Rectangle(0, 0, tile.getWidth(), tile.getHeight()));
+        }
+        return grass;
+    }
 
     private Baked baked;
 
@@ -109,6 +121,15 @@ final class LevelView {
         }
 
         prefetch(b, cx0 - 1, cx1 + 1, cy0 - 1, cy1 + 1);
+
+        for (Rectangle2D.Double r : lv.grassPatches) {              // solid grass beds, sitting on top of the floor beneath them
+            if (!view.intersects(r)) continue;
+            g.setPaint(grassPaint());
+            g.fill(r);
+            g.setColor(new Color(0, 0, 0, 70));
+            g.setStroke(new BasicStroke(4f));
+            g.draw(r);
+        }
 
         for (Level.Door d : lv.doors) {                             // closed doors: bramble / shutters / a purple seal
             if (d.open() || !view.intersects(d.gap)) continue;
