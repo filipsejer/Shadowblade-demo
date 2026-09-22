@@ -34,7 +34,14 @@ final class Level {
         enum State { SAFE, UNVISITED, COMBAT, CLEARED }
 
         final String name;
-        final Rectangle2D.Double bounds;
+        /**
+         * The room's shape: one rectangle, or several glued together into an L, a cross, an alcove off a bigger
+         * chamber — anything a hand-drawn map might show, so long as every piece is an axis-aligned box. Built by
+         * {@link Builder#start} / {@link Builder#attach} (the first piece) and {@link Builder#extend} (more pieces).
+         */
+        final List<Rectangle2D.Double> parts = new ArrayList<>();
+        /** The bounding box of every part — not the room's actual shape, just "roughly where it is". Kept in sync as parts are added. */
+        Rectangle2D.Double bounds;
         final List<Enemy.Type> spawns;
         State state;
         /** A gated room (the boss room) stays sealed until every other room has been cleared. */
@@ -44,9 +51,16 @@ final class Level {
 
         Room(String name, double x, double y, double w, double h, Roster roster) {
             this.name = name;
-            this.bounds = new Rectangle2D.Double(x, y, w, h);
+            this.parts.add(new Rectangle2D.Double(x, y, w, h));
+            recomputeBounds();
             this.spawns = List.copyOf(roster.types);
             this.state = spawns.isEmpty() ? State.SAFE : State.UNVISITED;
+        }
+
+        private void recomputeBounds() {
+            Rectangle2D.Double b = new Rectangle2D.Double(parts.get(0).x, parts.get(0).y, parts.get(0).width, parts.get(0).height);
+            for (Rectangle2D.Double p : parts) Rectangle2D.union(b, p, b);
+            bounds = b;
         }
     }
 
@@ -167,9 +181,11 @@ final class Level {
     /**
      * Lays rooms out by attaching each one to a side of another, centred on the shared axis (so the corridor between
      * them is a straight line through both room centres). Coordinates are normalised to be non-negative at the end.
+     * A room isn't just one rectangle, either: {@link #extend} glues extra pieces onto one, so a room can be an L, a
+     * cross, an alcove off a bigger chamber — anything built out of boxes.
      */
     private static final class Builder {
-        private record Link(Room a, Room b, boolean vertical) {}   // a is above / left of b
+        private record Link(Room a, Room b, boolean vertical, double width) {}   // a is above / left of b
 
         final List<Room> rooms = new ArrayList<>();
         final List<Link> links = new ArrayList<>();
@@ -181,46 +197,93 @@ final class Level {
         }
 
         Room attach(Room from, Dir dir, String name, double w, double h, Roster roster) {
+            return attach(from, dir, name, w, h, roster, DOOR_WIDTH, CORRIDOR_LENGTH);
+        }
+
+        /** Like the plain {@link #attach}, but with a corridor of your own width and length instead of the usual ones. */
+        Room attach(Room from, Dir dir, String name, double w, double h, Roster roster, double corridorWidth, double corridorLength) {
             Rectangle2D.Double f = from.bounds;
             double x, y;
             switch (dir) {
-                case NORTH -> { x = f.getCenterX() - w / 2; y = f.y - CORRIDOR_LENGTH - h; }
-                case SOUTH -> { x = f.getCenterX() - w / 2; y = f.getMaxY() + CORRIDOR_LENGTH; }
-                case EAST -> { x = f.getMaxX() + CORRIDOR_LENGTH; y = f.getCenterY() - h / 2; }
-                default -> { x = f.x - CORRIDOR_LENGTH - w; y = f.getCenterY() - h / 2; }
+                case NORTH -> { x = f.getCenterX() - w / 2; y = f.y - corridorLength - h; }
+                case SOUTH -> { x = f.getCenterX() - w / 2; y = f.getMaxY() + corridorLength; }
+                case EAST -> { x = f.getMaxX() + corridorLength; y = f.getCenterY() - h / 2; }
+                default -> { x = f.x - corridorLength - w; y = f.getCenterY() - h / 2; }
             }
             Room room = new Room(name, x, y, w, h, roster);
-            for (Room other : rooms) {
-                Rectangle2D.Double padded = new Rectangle2D.Double(other.bounds.x - 60, other.bounds.y - 60,
-                    other.bounds.width + 120, other.bounds.height + 120);
-                if (padded.intersects(room.bounds)) {
-                    throw new IllegalStateException(name + " overlaps " + other.name);
-                }
-            }
+            checkClear(room.parts.get(0), null, name);
             rooms.add(room);
             switch (dir) {
-                case NORTH -> links.add(new Link(room, from, true));
-                case SOUTH -> links.add(new Link(from, room, true));
-                case EAST -> links.add(new Link(from, room, false));
-                default -> links.add(new Link(room, from, false));
+                case NORTH -> links.add(new Link(room, from, true, corridorWidth));
+                case SOUTH -> links.add(new Link(from, room, true, corridorWidth));
+                case EAST -> links.add(new Link(from, room, false, corridorWidth));
+                default -> links.add(new Link(room, from, false, corridorWidth));
             }
             return room;
+        }
+
+        /**
+         * Glues another rectangle onto {@code room}'s shape, at ({@code dx}, {@code dy}) relative to its first
+         * piece's top-left corner. Not a new connected room and no corridor — just growing this room's own footprint.
+         * You place it flush against the piece it's meant to join (no gap, no need to fudge an overlap yourself) —
+         * {@link #bridge} grows it into that piece by a little on its own, the same reason a door's own walkable
+         * area reaches a little way into the rooms on either side of it (see {@code DOOR_OVERLAP}): two separately
+         * clamped rectangles that only ever touch at a single seam leave a body-radius-wide gap neither one claims,
+         * where you'd get stuck.
+         */
+        Room extend(Room room, double dx, double dy, double w, double h) {
+            Rectangle2D.Double origin = room.parts.get(0);
+            Rectangle2D.Double part = new Rectangle2D.Double(origin.x + dx, origin.y + dy, w, h);
+            bridge(part, room.parts);
+            checkClear(part, room, "an extra piece of " + room.name);
+            room.parts.add(part);
+            room.recomputeBounds();
+            return room;
+        }
+
+        /** How far two of a room's own pieces must overlap where they meet (see {@link #extend}). */
+        private static final double PART_OVERLAP = 30;
+
+        /** Grows {@code part}'s edges a little way into any of {@code existing} it sits exactly flush against. */
+        private static void bridge(Rectangle2D.Double part, List<Rectangle2D.Double> existing) {
+            for (Rectangle2D.Double op : existing) {
+                boolean yShared = part.y < op.getMaxY() && part.getMaxY() > op.y;
+                boolean xShared = part.x < op.getMaxX() && part.getMaxX() > op.x;
+                if (yShared && Math.abs(part.x - op.getMaxX()) < 0.5) { part.x -= PART_OVERLAP; part.width += PART_OVERLAP; }
+                if (yShared && Math.abs(part.getMaxX() - op.x) < 0.5) part.width += PART_OVERLAP;
+                if (xShared && Math.abs(part.y - op.getMaxY()) < 0.5) { part.y -= PART_OVERLAP; part.height += PART_OVERLAP; }
+                if (xShared && Math.abs(part.getMaxY() - op.y) < 0.5) part.height += PART_OVERLAP;
+            }
+        }
+
+        /** Refuses a piece that (nearly) touches any room other than {@code exclude} — so rooms never bleed into each other. */
+        private void checkClear(Rectangle2D.Double part, Room exclude, String label) {
+            for (Room other : rooms) {
+                if (other == exclude) continue;
+                for (Rectangle2D.Double op : other.parts) {
+                    Rectangle2D.Double padded = new Rectangle2D.Double(op.x - 60, op.y - 60, op.width + 120, op.height + 120);
+                    if (padded.intersects(part)) throw new IllegalStateException(label + " overlaps " + other.name);
+                }
+            }
         }
 
         /** Shifts everything so the top-left of the map is (0, 0), then builds the doors. */
         List<Door> finish() {
             double minX = Double.MAX_VALUE, minY = Double.MAX_VALUE;
-            for (Room r : rooms) {
-                minX = Math.min(minX, r.bounds.x);
-                minY = Math.min(minY, r.bounds.y);
+            for (Room r : rooms) for (Rectangle2D.Double p : r.parts) {
+                minX = Math.min(minX, p.x);
+                minY = Math.min(minY, p.y);
             }
             for (Room r : rooms) {
-                r.bounds.x -= minX;
-                r.bounds.y -= minY;
+                for (Rectangle2D.Double p : r.parts) {
+                    p.x -= minX;
+                    p.y -= minY;
+                }
+                r.recomputeBounds();
             }
             List<Door> doors = new ArrayList<>();
             for (Link l : links) {
-                doors.add(l.vertical() ? Door.vertical(l.a(), l.b(), DOOR_WIDTH) : Door.horizontal(l.a(), l.b(), DOOR_WIDTH));
+                doors.add(l.vertical() ? Door.vertical(l.a(), l.b(), l.width()) : Door.horizontal(l.a(), l.b(), l.width()));
             }
             return doors;
         }
@@ -477,6 +540,33 @@ final class Level {
         return level;
     }
 
+    /**
+     * Not a real level — a fixture for exercising multi-part rooms (an irregular main hall, a detached-looking alcove
+     * that's still one room, and a custom-width corridor) so the shape system has something real to test against.
+     * Never reachable in play.
+     */
+    static Level testShapes() {
+        Builder b = new Builder();
+        Room hall = b.start("MAIN HALL", 800, 600, new Roster());
+        b.extend(hall, 800, 150, 300, 300);                  // a bump to the east, flush against the hall's right wall
+        b.extend(hall, 100, 600, 250, 250);                  // and another to the south: together an L / cross-ish shape
+        b.attach(hall, Dir.EAST, "SIDE ROOM", 700, 500, new Roster(), 300, 90);   // a wide, short corridor instead of the usual one
+        List<Door> doors = b.finish();
+        Level level = new Level(b.rooms, doors, List.of(), hall.bounds.getCenterX(), hall.bounds.getCenterY(), -1000, -1000);
+        level.name = "SHAPE TEST";
+        level.theme = Theme.FOREST;
+        for (Room r : level.rooms) r.state = Room.State.CLEARED;
+        return level;
+    }
+
+    /** Test-only: {@link Builder#extend} refuses a piece that overlaps another room, exactly like {@link Builder#attach} always has. */
+    static void testShapesOverlapping() {
+        Builder b = new Builder();
+        Room hall = b.start("MAIN HALL", 800, 600, new Roster());
+        b.attach(hall, Dir.EAST, "SIDE ROOM", 700, 500, new Roster());
+        b.extend(hall, 850, 0, 400, 400);   // reaches well past where SIDE ROOM already is
+    }
+
     /** Builds the doors and puts the hub's furniture in: the three trainers, and the spot the guide appears. */
     private static Level finish(Builder b, Room hub, String name, String bossName, Theme theme, double hpMult, double dmgMult,
                                 double smallHpMult, double smallDmgMult) {
@@ -507,9 +597,12 @@ final class Level {
         double xpScale = 1 + 0.5 * theme.ordinal();
         for (Room r : rooms) {
             if (r.gated) continue;
-            Rectangle2D.Double b = r.bounds;
+            List<Rectangle2D.Double> roomy = new ArrayList<>();          // pieces big enough to comfortably hold one; a narrow alcove stays empty
+            for (Rectangle2D.Double p : r.parts) if (p.width >= 300 && p.height >= 300) roomy.add(p);
+            if (roomy.isEmpty()) continue;
             int want = 2 + rng.nextInt(2);
             for (int tries = 0; tries < 60 && want > 0; tries++) {
+                Rectangle2D.Double b = roomy.get(rng.nextInt(roomy.size()));
                 double x = b.x + 120 + rng.nextDouble() * (b.width - 240), y = b.y + 120 + rng.nextDouble() * (b.height - 240);
                 boolean ok = Util.dist(x, y, spawnX, spawnY) > 140 && Util.dist(x, y, guideX, guideY) > 140
                     && Util.dist(x, y, b.getCenterX(), b.getCenterY()) > 160;                   // the middle of a room stays open for the fight
@@ -534,7 +627,7 @@ final class Level {
         boolean unlocked = bossUnlocked();
         for (Door d : doors) d.sealed = (d.a.gated || d.b.gated) && !unlocked;
         walkable.clear();
-        for (Room r : rooms) walkable.add(r.bounds);
+        for (Room r : rooms) walkable.addAll(r.parts);
         for (Door d : doors) if (d.open()) walkable.add(d.walk);
     }
 
@@ -567,11 +660,17 @@ final class Level {
         return false;
     }
 
-    /** The room whose interior (shrunk by {@code inset} from every wall) contains the point, or null. */
+    /**
+     * The room whose interior (shrunk by {@code inset} from every wall) contains the point, or null. Each of a
+     * multi-part room's pieces is shrunk on its own, so a point right at the seam between two pieces (rather than
+     * against an actual wall) can occasionally read as just outside — harmless: it only delays a room's trigger by
+     * a pixel or two, never lets you skip it.
+     */
     Room roomAt(double x, double y, double inset) {
         for (Room r : rooms) {
-            Rectangle2D.Double b = r.bounds;
-            if (x >= b.x + inset && x <= b.getMaxX() - inset && y >= b.y + inset && y <= b.getMaxY() - inset) return r;
+            for (Rectangle2D.Double b : r.parts) {
+                if (x >= b.x + inset && x <= b.getMaxX() - inset && y >= b.y + inset && y <= b.getMaxY() - inset) return r;
+            }
         }
         return null;
     }

@@ -84,8 +84,10 @@ final class Minimap {
                 case COMBAT -> ROOM_COMBAT;
                 case CLEARED -> ROOM_CLEARED;
             });
-            g.fill(r.bounds);
-            shown.add(new Area(r.bounds));
+            for (Rectangle2D.Double p : r.parts) {
+                g.fill(p);
+                shown.add(new Area(p));
+            }
         }
         g.setColor(WALL);
         g.setStroke(new BasicStroke((float) (1.6 * px)));

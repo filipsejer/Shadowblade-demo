@@ -63,7 +63,7 @@ Both screens are built in `World.updateTitle` / `World.updateChapterSelect` / `W
 
 | File | What it does |
 | --- | --- |
-| `Level.java` | The maps: rooms, corridors (doors), the trainers, the guide's spot, the sealed boss door, and walkable-area collision. `Level.create(n)` builds level n (`levelOne()`, `levelTwo()`), `Level.tutorial()` the opening story's map, `Level.town()` Transit Town |
+| `Level.java` | The maps: rooms (each one or more glued-together rectangles — see **Room shapes** below), corridors (doors), the trainers, the guide's spot, the sealed boss door, and walkable-area collision. `Level.create(n)` builds level n (`levelOne()`, `levelTwo()`), `Level.tutorial()` the opening story's map, `Level.town()` Transit Town |
 | `Tutorial.java` / `Dialogue.java` | The opening story: the script (each lesson is a scene with the squirrel) and the speech box's rules (typewriter text, lines that wait for a key or are called out, the voice's chirps); `Dialogue` is reused as-is for Transit Town's locals |
 | `TownArt.java` | Transit Town's three locals and the train station, shuttered and lit |
 | `Breakable.java` / `BreakableArt.java` | The crates and barrels: their rules (solid, one hit, XP) and their sprites in a forest, city and laboratory look |
@@ -295,6 +295,29 @@ there is a branch of rooms going north, east and south, and the boss room is to 
   a group isn't in step. A locked-on shade that goes into shadow keeps its lock on hold and gets it back when solid.
 - To add a room: call `b.attach(existingRoom, Dir.NORTH / EAST / SOUTH / WEST, "NAME", width, height, roster)` in
   `Level.levelOne()` / `levelTwo()` (or a new level method, then add it to `Level.create` and raise `Level.COUNT`). To add a trainer, add a `Station` to the list at the bottom of it.
+
+## Room shapes
+
+A room isn't only ever a single rectangle — `Builder.extend(room, dx, dy, w, h)` glues another rectangle onto one, at
+an offset from its first piece's top-left corner, so a room can be an L, a cross, a wide chamber with a little alcove
+off it, anything built out of boxes (see `Level.testShapes()` for a worked example, and its screenshot in the test
+output). It's still no corridor and no new connected room — just growing that one room's own footprint — and every
+piece of it (collision, the floor bake, the minimap, prop scattering, where enemies spawn) treats the whole cluster
+as one seamless room, not several. `Builder.attach(...)` also takes an optional corridor width and length, if the
+usual 130-wide, 180-long corridor isn't what a room-to-room connection calls for.
+
+**Placing pieces:** give `extend()` a piece flush against the one it's meant to join — no need to fudge a gap or an
+overlap yourself. It grows a little way past that seam on its own (`Builder.bridge()`, the same idea as a door's own
+walkable area reaching a little way into the rooms on either side of it): two rectangles that only ever touch at a
+single line would otherwise leave a body-radius-wide gap neither one claims, where you'd get stuck standing right at
+the seam.
+
+**What it can't do:** every piece is still an axis-aligned rectangle — no diagonal walls, no curves, no off-center
+doorways (a corridor is always centred on the axis it shares with both rooms). That's a deliberate trade-off: real
+polygon collision would mean rewriting how a body finds its way out of a wall (right now just "clamp to the nearest
+edge of the nearest rectangle"), and touching the minimap and every existing level along with it. Rectangles glued
+together get most of the way to a hand-drawn map's variety — wide chambers, alcoves, jogged corridors — for a much
+smaller, much safer change.
 
 ## Minimap
 

@@ -2,6 +2,7 @@ package game;
 
 import java.awt.Color;
 import java.awt.event.KeyEvent;
+import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -704,8 +705,10 @@ final class World {
         final double margin = 90;
         double x = 0, y = 0;
         for (int tries = 0; tries < 30; tries++) {
-            x = room.bounds.x + margin + rng.nextDouble() * (room.bounds.width - 2 * margin);
-            y = room.bounds.y + margin + rng.nextDouble() * (room.bounds.height - 2 * margin);
+            Rectangle2D.Double part = room.parts.get(rng.nextInt(room.parts.size()));   // multi-part rooms spawn into any of their pieces
+            double mx = Math.min(margin, part.width / 2 - 1), my = Math.min(margin, part.height / 2 - 1);
+            x = part.x + mx + rng.nextDouble() * (part.width - 2 * mx);
+            y = part.y + my + rng.nextDouble() * (part.height - 2 * my);
             if (Util.dist(x, y, player.x, player.y) > 320) break;
         }
         enemies.add(new Enemy(type, x, y, level.hpMult(type), level.damageMult(type), rng));
