@@ -435,10 +435,13 @@ final class Level {
 
     /**
      * Transit Town: the friendly hub between the opening story and level 1. No enemies anywhere, just the square you
-     * arrive in, an old quarter off to the east where the locals are, and the edge of the woods to the west. The train
+     * arrive in, an old quarter off to the east where the locals are, the edge of the woods to the west, and a couple
+     * more places worth a look: a quiet fountain square to the north, and a back alley off the old quarter. The train
      * station (the same spot as every other level's "guide") stays shut until level 1 is behind you.
      * <pre>
-     *   [ WOODS EDGE ] ---- [ TOWN SQUARE ] ---- [ OLD QUARTER ]
+     *                       [ FOUNTAIN SQUARE ]
+     *                               |
+     *   [ WOODS EDGE ] ---- [ TOWN SQUARE ] ---- [ OLD QUARTER ] ---- [ BACK ALLEY ]
      * </pre>
      */
     static Level town() {
@@ -446,6 +449,8 @@ final class Level {
         Room square = b.start("TOWN SQUARE", 1100, 760, new Roster());
         Room quarter = b.attach(square, Dir.EAST, "OLD QUARTER", 900, 640, new Roster());
         Room edge = b.attach(square, Dir.WEST, "WOODS EDGE", 800, 600, new Roster());
+        b.attach(square, Dir.NORTH, "FOUNTAIN SQUARE", 900, 640, new Roster());
+        b.attach(quarter, Dir.EAST, "BACK ALLEY", 800, 600, new Roster());
         List<Door> doors = b.finish();
         Rectangle2D.Double sq = square.bounds, oq = quarter.bounds, we = edge.bounds;
 

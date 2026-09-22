@@ -122,9 +122,10 @@ how close you may get before the squirrel runs is `Tutorial.SEARCH_FLEE_DISTANCE
 
 ## Transit Town
 
-A friendly hub (in the spirit of Traverse Town) between the opening story and level 1: no enemies anywhere, just a town square, an old
-quarter to the east with the locals, and the edge of the woods to the west — `Level.town()`. There is no minimap "rooms cleared" count
-and no trainers here; it exists purely to give the story somewhere to land you, and later to be the way back into the run.
+A friendly hub (in the spirit of Traverse Town) between the opening story and level 1: no enemies anywhere, five open areas to wander —
+the town square you arrive in, an old quarter to the east with the locals, a back alley off that, a quiet fountain square to the north,
+and the edge of the woods to the west — all built by `Level.town()`. There is no minimap "rooms cleared" count and no trainers here; it
+exists purely to give the story somewhere to land you, and later to be the way back into the run.
 
 - **Three chatty locals** (an old traveller, a merchant, a child — `TownArt.java`) stand around town. Walk up to one and press **E** for
   one short, unimportant line — its own small dialogue box (`World.dialogue`, the same `Dialogue` class the opening story uses, just with
