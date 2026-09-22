@@ -74,9 +74,18 @@ final class Level {
         /** True while this door leads to a gated room that hasn't been unlocked yet. Set by {@link Level#refresh()}. */
         boolean sealed;
 
-        /** Rooms {@code a} (above) and {@code b} (below), joined by a vertical corridor. */
+        /** Rooms {@code a} (above) and {@code b} (below), joined by a vertical corridor centred on the shared axis. */
         static Door vertical(Room a, Room b, double width) {
-            double cx = a.bounds.getCenterX();
+            return vertical(a, b, width, 0);
+        }
+
+        /**
+         * Like the plain {@link #vertical}, but the corridor is shifted {@code offset} to one side of centre
+         * (positive = east) instead of sitting on the shared axis — for a doorway that isn't in the middle of the
+         * wall between the two rooms. The caller is on the hook for keeping it within both rooms' walls.
+         */
+        static Door vertical(Room a, Room b, double width, double offset) {
+            double cx = a.bounds.getCenterX() + offset;
             Rectangle2D.Double gap = new Rectangle2D.Double(cx - width / 2, a.bounds.getMaxY(), width, b.bounds.y - a.bounds.getMaxY());
             Door d = new Door(a, b, gap, true, new Rectangle2D.Double(gap.x, gap.y - DOOR_OVERLAP, width, gap.height + 2 * DOOR_OVERLAP));
             d.barriers.add(new Rectangle2D.Double(gap.x, gap.y - BARRIER_THICKNESS, width, BARRIER_THICKNESS));
@@ -84,9 +93,14 @@ final class Level {
             return d;
         }
 
-        /** Rooms {@code a} (left) and {@code b} (right), joined by a horizontal corridor. */
+        /** Rooms {@code a} (left) and {@code b} (right), joined by a horizontal corridor centred on the shared axis. */
         static Door horizontal(Room a, Room b, double width) {
-            double cy = a.bounds.getCenterY();
+            return horizontal(a, b, width, 0);
+        }
+
+        /** Like the plain {@link #horizontal}, but the corridor is shifted {@code offset} to one side of centre (positive = south). */
+        static Door horizontal(Room a, Room b, double width, double offset) {
+            double cy = a.bounds.getCenterY() + offset;
             Rectangle2D.Double gap = new Rectangle2D.Double(a.bounds.getMaxX(), cy - width / 2, b.bounds.x - a.bounds.getMaxX(), width);
             Door d = new Door(a, b, gap, false, new Rectangle2D.Double(gap.x - DOOR_OVERLAP, gap.y, gap.width + 2 * DOOR_OVERLAP, width));
             d.barriers.add(new Rectangle2D.Double(gap.x - BARRIER_THICKNESS, gap.y, BARRIER_THICKNESS, width));
@@ -187,7 +201,7 @@ final class Level {
      * cross, an alcove off a bigger chamber — anything built out of boxes.
      */
     private static final class Builder {
-        private record Link(Room a, Room b, boolean vertical, double width) {}   // a is above / left of b
+        private record Link(Room a, Room b, boolean vertical, double width, double offset) {}   // a is above / left of b
 
         final List<Room> rooms = new ArrayList<>();
         final List<Link> links = new ArrayList<>();
@@ -199,11 +213,21 @@ final class Level {
         }
 
         Room attach(Room from, Dir dir, String name, double w, double h, Roster roster) {
-            return attach(from, dir, name, w, h, roster, DOOR_WIDTH, CORRIDOR_LENGTH);
+            return attach(from, dir, name, w, h, roster, DOOR_WIDTH, CORRIDOR_LENGTH, 0);
         }
 
         /** Like the plain {@link #attach}, but with a corridor of your own width and length instead of the usual ones. */
         Room attach(Room from, Dir dir, String name, double w, double h, Roster roster, double corridorWidth, double corridorLength) {
+            return attach(from, dir, name, w, h, roster, corridorWidth, corridorLength, 0);
+        }
+
+        /**
+         * Like the plain {@link #attach}, but the doorway is shifted {@code doorOffset} off the middle of the shared
+         * wall instead of sitting centred on it — positive is east for a north/south doorway, south for an east/west
+         * one. The rooms themselves are still placed centred on each other, exactly as {@link #attach} always has;
+         * only the doorway between them moves. It's on you to keep it within both rooms' walls.
+         */
+        Room attach(Room from, Dir dir, String name, double w, double h, Roster roster, double corridorWidth, double corridorLength, double doorOffset) {
             Rectangle2D.Double f = from.bounds;
             double x, y;
             switch (dir) {
@@ -216,10 +240,10 @@ final class Level {
             checkClear(room.parts.get(0), null, name);
             rooms.add(room);
             switch (dir) {
-                case NORTH -> links.add(new Link(room, from, true, corridorWidth));
-                case SOUTH -> links.add(new Link(from, room, true, corridorWidth));
-                case EAST -> links.add(new Link(from, room, false, corridorWidth));
-                default -> links.add(new Link(room, from, false, corridorWidth));
+                case NORTH -> links.add(new Link(room, from, true, corridorWidth, doorOffset));
+                case SOUTH -> links.add(new Link(from, room, true, corridorWidth, doorOffset));
+                case EAST -> links.add(new Link(from, room, false, corridorWidth, doorOffset));
+                default -> links.add(new Link(room, from, false, corridorWidth, doorOffset));
             }
             return room;
         }
@@ -285,7 +309,7 @@ final class Level {
             }
             List<Door> doors = new ArrayList<>();
             for (Link l : links) {
-                doors.add(l.vertical() ? Door.vertical(l.a(), l.b(), l.width()) : Door.horizontal(l.a(), l.b(), l.width()));
+                doors.add(l.vertical() ? Door.vertical(l.a(), l.b(), l.width(), l.offset()) : Door.horizontal(l.a(), l.b(), l.width(), l.offset()));
             }
             return doors;
         }
@@ -571,46 +595,68 @@ final class Level {
     }
 
     /**
-     * A prototype built from a hand-drawn sketch — the second, clearer pass at it, where every piece (the entrance,
-     * both stairs, the blocked-off deck, the grass, the plaza and the NPC's spot) is drawn touching the next with no
-     * door between any of them: one continuously-shaped room, not several rooms joined by corridors. That's exactly
-     * what {@link Builder#extend} is for, so the whole thing is one {@link Room} built from six glued pieces,
-     * rather than the separate attach()-linked rooms an earlier pass at this used. No enemies anywhere — reachable
-     * from Select Chapter's extra row, not part of the real game's three levels.
-     * <p>A couple of things in the sketch don't have a real content system to hook into yet, so they're stood in
-     * with the closest existing piece rather than faked: the orange barricade in the deck is a row of plain (and,
-     * per the sketch, deliberately walk-through — {@code radius} 0) log landmarks standing in for a real barricade
-     * sprite that would later be removed once a mission-flag system exists to gate it on; the blue marks (a scene
-     * transition, Kingdom-Hearts-style — this game has no scene switching at all right now, it's one continuous
-     * map, see the top of this file) are just placeholder landmarks at the sketched spots, not an actual portal.
+     * Not a real level — a fixture for {@link Builder#attach}'s {@code doorOffset}: two rooms north/south of a third,
+     * one doorway pushed west of centre and one pushed east, so a zigzag corridor (like a switchback staircase) is
+     * possible without the rooms themselves needing to move off their shared centreline. Never reachable in play.
+     */
+    static Level testOffCentreDoors() {
+        Builder b = new Builder();
+        Room mid = b.start("MIDDLE", 800, 500, new Roster());
+        b.attach(mid, Dir.NORTH, "NORTH ROOM", 800, 500, new Roster(), DOOR_WIDTH, CORRIDOR_LENGTH, -200);
+        b.attach(mid, Dir.SOUTH, "SOUTH ROOM", 800, 500, new Roster(), DOOR_WIDTH, CORRIDOR_LENGTH, 200);
+        List<Door> doors = b.finish();
+        Level level = new Level(b.rooms, doors, List.of(), mid.bounds.getCenterX(), mid.bounds.getCenterY(), -1000, -1000);
+        level.name = "OFF-CENTRE DOOR TEST";
+        level.theme = Theme.FOREST;
+        for (Room r : level.rooms) r.state = Room.State.CLEARED;
+        return level;
+    }
+
+    /**
+     * A prototype built from a hand-drawn sketch — the third pass, now with an actual legend: grey is floor, beige
+     * is a real wall, orange is a barricade, green is grass/planters, and blue marks an exit to somewhere not built
+     * yet. So this is real rooms with real walls between them (not one open shape — the second pass's mistake), the
+     * doorways between two of them off-centre to match the sketch's zigzag ({@link Builder#attach}'s new
+     * {@code doorOffset} parameter, added for exactly this), and two small stub rooms standing in for the places
+     * the sketch marks as exits but doesn't design: what's through the north door is meant to become a whole real
+     * "train station" area later, and the west door is where the map is meant to keep going past the edge of the
+     * page. No enemies anywhere — reachable from Select Chapter's extra row, not part of the real game's three levels.
+     * <p>The barricade is a row of plain, deliberately walk-through ({@code radius} 0) log landmarks — a stand-in for
+     * real barricade art plus the mission-flag system that would one day remove it, neither of which exist yet. The
+     * planters are solid bush landmarks (you walk around them, same as a crate).
      */
     static Level protoSketch() {
         Builder b = new Builder();
-        Room area = b.start("PROTOTYPE AREA", 900, 300, new Roster());   // the entrance, with the grassy band along its top
-        b.extend(area, 0, 300, 900, 130);                    // the first stairs, full width, straight down from the entrance
-        b.extend(area, 0, 430, 850, 290);                    // the blocked-off deck / walking platform
-        b.extend(area, 0, 720, 820, 130);                    // the second stairs
-        b.extend(area, -130, 850, 950, 580);                 // the grass landing and the small plaza, shifted west a little
-        b.extend(area, 820, 1210, 420, 220);                 // flush against the plaza's right wall, low down — the NPC's spot
+        Room entrance = b.start("ENTRANCE", 900, 300, new Roster());
+        b.attach(entrance, Dir.NORTH, "TRAIN STATION", 400, 300, new Roster());              // not designed yet — just marks that something goes here
+        Room deck = b.attach(entrance, Dir.SOUTH, "UPPER DECK", 850, 290, new Roster(), 150, 130, -250);   // doorway biased west
+        Room plaza = b.attach(deck, Dir.SOUTH, "SMALL PLAZA", 950, 600, new Roster(), 150, 130, 250);      // doorway biased east
+        b.attach(plaza, Dir.WEST, "WEST DISTRICT", 400, 300, new Roster());                  // likewise — the map keeps going past here
+        b.extend(plaza, plaza.parts.get(0).width, 350, 900, 250);                            // flush against the plaza's east wall — long, for the kid's mission
         List<Door> doors = b.finish();
 
-        Rectangle2D.Double origin = area.parts.get(0);
-        Level level = new Level(b.rooms, doors, List.of(), origin.x + 450, origin.y + 200, origin.x + 450, origin.y + 110);
+        Rectangle2D.Double en = entrance.bounds, dk = deck.bounds, pz = plaza.bounds;
+        Level level = new Level(b.rooms, doors, List.of(), en.getCenterX(), en.getCenterY() + 60, en.getCenterX(), en.getCenterY());
         level.name = "PROTOTYPE";
         level.bossName = "";
         level.theme = Theme.CITY;
-        level.hasStation = true;   // reuses Transit Town's shuttered station building by the entrance, no new art needed
 
-        // the barricade: a row of non-solid landmarks across the deck (parts.get(2)), so it can be walked straight through for now
-        for (double dy : new double[]{480, 575, 670}) level.landmarks.add(new Landmark("log", origin.x + 432, origin.y + dy, 0));
-        // the two "scene transition" spots: placeholder marks only, until there's an actual scene system to send them to
-        level.landmarks.add(new Landmark("stump", origin.x + 464, origin.y + 20, 0));
-        level.landmarks.add(new Landmark("stump", origin.x - 115, origin.y + 1176, 0));
+        // planters: solid, walked around, at the top of the entrance
+        level.landmarks.add(new Landmark("bush", en.x + 130, en.y + 60, 26));
+        level.landmarks.add(new Landmark("bush", en.getMaxX() - 130, en.y + 60, 26));
+        // the grass/planter patch in the plaza's top-left corner
+        level.landmarks.add(new Landmark("bush", pz.x + 140, pz.y + 100, 26));
+        level.landmarks.add(new Landmark("bush", pz.x + 210, pz.y + 160, 26));
+        level.landmarks.add(new Landmark("bush", pz.x + 110, pz.y + 180, 26));
+        // the barricade: a walk-through row of logs across the deck
+        for (double dy : new double[]{dk.y + 30, dk.getCenterY(), dk.getMaxY() - 30}) {
+            level.landmarks.add(new Landmark("log", dk.x + dk.width * 0.4, dy, 0));
+        }
 
-        Rectangle2D.Double npcSpot = area.parts.get(5);
+        Rectangle2D.Double npcSpot = plaza.parts.get(1);
         level.npcs.add(new Npc("KID", "town.child.idle",
             "Bet you can't hit that lamppost from here! (Placeholder - no mission system to hook this up to yet.)",
-            npcSpot.getCenterX(), npcSpot.getCenterY()));
+            npcSpot.x + 60, npcSpot.getCenterY()));
         return level;
     }
 

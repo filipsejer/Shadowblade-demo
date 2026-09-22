@@ -59,7 +59,7 @@ The game opens on a menu with two rows, **W / S** (or the arrows) to choose and 
 
 Both screens are built in `World.updateTitle` / `World.updateChapterSelect` / `World.beginChapter`, and drawn in `Renderer.drawTitle` / `Renderer.drawChapterSelect`.
 
-Select Chapter has one extra row below the three real levels: **PROTOTYPE**, a hand-drawn layout being tried out (`Level.protoSketch()`, `World.beginPrototype()`). It's not one of the three real levels — it doesn't count towards `Level.COUNT`, has no enemies, and can't be "cleared" — just a level built with the room-shape system (see **Room shapes**) to try against something someone actually sketched, before committing to it as a real room in a real level. Two things in it are placeholders for systems that don't exist yet, each stood in with a plain, walk-through (`radius` 0) landmark: a row of logs where the sketch marks a barricade that would later be removed once there's a mission-flag system to gate it on, and two marks where the sketch wants a scene transition (there's no scene switching in this game at all right now — see the top of `Level.java` — so these don't go anywhere yet).
+Select Chapter has one extra row below the three real levels: **PROTOTYPE**, a hand-drawn layout being tried out (`Level.protoSketch()`, `World.beginPrototype()`). It's not one of the three real levels — it doesn't count towards `Level.COUNT`, has no enemies, and can't be "cleared" — just a level built with the room-shape system (see **Room shapes**) to try against something someone actually sketched, before committing to it as a real room in a real level. Real rooms with real walls between them, a doorway pushed off-centre on two of them to match the sketch's zigzag (see **Room shapes**), and a couple of placeholders for systems that don't exist yet: the barricade across the deck is a row of plain, walk-through (`radius` 0) log landmarks standing in for real barricade art and the mission-flag system that would one day remove it; the two doors marked as exits to somewhere not yet designed lead to small, empty stub rooms rather than faking content that isn't there.
 
 ## Layout
 
@@ -303,12 +303,17 @@ there is a branch of rooms going north, east and south, and the boss room is to 
 A room isn't only ever a single rectangle — `Builder.extend(room, dx, dy, w, h)` glues another rectangle onto one, at
 an offset from its first piece's top-left corner, so a room can be an L, a cross, a wide chamber with a little alcove
 off it, anything built out of boxes (see `Level.testShapes()` for a worked synthetic example, and `Level.protoSketch()`
-— reachable in-game from Select Chapter's extra **PROTOTYPE** row — for one built entirely from an actual hand-drawn
-sketch: six pieces glued into a single room with no doors anywhere in it, including a westward jog partway down and
-an off-centre extra piece jutting off the end instead of a centred corridor). It's still no corridor and no new connected room — just growing that one room's own footprint — and every
-piece of it (collision, the floor bake, the minimap, prop scattering, where enemies spawn) treats the whole cluster
-as one seamless room, not several. `Builder.attach(...)` also takes an optional corridor width and length, if the
-usual 130-wide, 180-long corridor isn't what a room-to-room connection calls for.
+— reachable in-game from Select Chapter's extra **PROTOTYPE** row — for the small plaza's kid-mission corridor, a
+long extra piece glued flush onto its east wall). It's still no corridor and no new connected room — just growing
+that one room's own footprint — and every piece of it (collision, the floor bake, the minimap, prop scattering, where
+enemies spawn) treats the whole cluster as one seamless room, not several.
+
+A doorway between two separate rooms doesn't have to sit centred on the shared wall either: `Builder.attach(...)`
+takes an optional corridor width and length, and beyond that an optional `doorOffset` — how far off centre the
+doorway itself sits (positive east for a north/south doorway, positive south for an east/west one), while the two
+rooms stay placed centred on each other exactly as `attach()` always has. That's how `Level.protoSketch()`'s zigzag
+staircase works: one doorway biased west, the next biased east, both still ordinary centred rooms. See
+`Level.testOffCentreDoors()` for a minimal worked example.
 
 **Placing pieces:** give `extend()` a piece flush against the one it's meant to join — no need to fudge a gap or an
 overlap yourself. It grows a little way past that seam on its own (`Builder.bridge()`, the same idea as a door's own
@@ -316,12 +321,12 @@ walkable area reaching a little way into the rooms on either side of it): two re
 single line would otherwise leave a body-radius-wide gap neither one claims, where you'd get stuck standing right at
 the seam.
 
-**What it can't do:** every piece is still an axis-aligned rectangle — no diagonal walls, no curves, no off-center
-doorways (a corridor is always centred on the axis it shares with both rooms). That's a deliberate trade-off: real
-polygon collision would mean rewriting how a body finds its way out of a wall (right now just "clamp to the nearest
-edge of the nearest rectangle"), and touching the minimap and every existing level along with it. Rectangles glued
-together get most of the way to a hand-drawn map's variety — wide chambers, alcoves, jogged corridors — for a much
-smaller, much safer change.
+**What it can't do:** every piece is still an axis-aligned rectangle — no diagonal walls, no curves. That's a
+deliberate trade-off: real polygon collision would mean rewriting how a body finds its way out of a wall (right now
+just "clamp to the nearest edge of the nearest rectangle"), and touching the minimap and every existing level along
+with it. Rectangles glued together, plus an off-centre doorway where a corridor needs one, get most of the way to a
+hand-drawn map's variety — wide chambers, alcoves, jogged corridors, zigzag staircases — for a much smaller, much
+safer change.
 
 ## Minimap
 
