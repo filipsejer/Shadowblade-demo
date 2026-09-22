@@ -59,6 +59,8 @@ The game opens on a menu with two rows, **W / S** (or the arrows) to choose and 
 
 Both screens are built in `World.updateTitle` / `World.updateChapterSelect` / `World.beginChapter`, and drawn in `Renderer.drawTitle` / `Renderer.drawChapterSelect`.
 
+Select Chapter has one extra row below the three real levels: **PROTOTYPE**, a hand-drawn layout being tried out (`Level.protoSketch()`, `World.beginPrototype()`). It's not one of the three real levels — it doesn't count towards `Level.COUNT`, has no enemies, and can't be "cleared" — just a level built with the room-shape system (see **Room shapes**) to try against something someone actually sketched, before committing to it as a real room in a real level.
+
 ## Layout
 
 | File | What it does |
@@ -300,8 +302,9 @@ there is a branch of rooms going north, east and south, and the boss room is to 
 
 A room isn't only ever a single rectangle — `Builder.extend(room, dx, dy, w, h)` glues another rectangle onto one, at
 an offset from its first piece's top-left corner, so a room can be an L, a cross, a wide chamber with a little alcove
-off it, anything built out of boxes (see `Level.testShapes()` for a worked example, and its screenshot in the test
-output). It's still no corridor and no new connected room — just growing that one room's own footprint — and every
+off it, anything built out of boxes (see `Level.testShapes()` for a worked synthetic example, and `Level.protoSketch()`
+— reachable in-game from Select Chapter's extra **PROTOTYPE** row — for one built from an actual hand-drawn sketch,
+including a room with an off-centre extra piece jutting off it instead of a centred corridor). It's still no corridor and no new connected room — just growing that one room's own footprint — and every
 piece of it (collision, the floor bake, the minimap, prop scattering, where enemies spawn) treats the whole cluster
 as one seamless room, not several. `Builder.attach(...)` also takes an optional corridor width and length, if the
 usual 130-wide, 180-long corridor isn't what a room-to-room connection calls for.

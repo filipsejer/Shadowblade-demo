@@ -136,8 +136,10 @@ final class Level {
     String name = "LEVEL";
     String bossName = "GUARDIAN";
     Theme theme = Theme.FOREST;
-    /** True only for {@link #town()}: the friendly hub between the opening story and level 1. */
+    /** True only for {@link #town()}: the friendly hub between the opening story and level 1. Drives the "TRANSIT TOWN" HUD banner and the path out to the forest. */
     boolean town;
+    /** True for any level that should draw the (shuttered/lit) train station building at {@link #guideX}/{@link #guideY} — {@link #town()} always; also used by a standalone level that just wants the same building, without the rest of Transit Town's furniture. */
+    boolean hasStation;
     /** Transit Town only: where the path out into the forest (level 1) is. */
     double forestX, forestY;
     /** Bumped whenever doors open or close, so anything cached from the map's shape knows to rebuild. */
@@ -523,6 +525,7 @@ final class Level {
         level.bossName = "";
         level.theme = Theme.CITY;
         level.town = true;
+        level.hasStation = true;
         level.forestX = we.x + 260;                                                           // far enough from the wall that its "press E" prompt, centred, never runs off the edge of the map
         level.forestY = we.getCenterY();
 
@@ -565,6 +568,45 @@ final class Level {
         Room hall = b.start("MAIN HALL", 800, 600, new Roster());
         b.attach(hall, Dir.EAST, "SIDE ROOM", 700, 500, new Roster());
         b.extend(hall, 850, 0, 400, 400);   // reaches well past where SIDE ROOM already is
+    }
+
+    /**
+     * A prototype built from a hand-drawn sketch: a train station, down two flights of narrow stairs to a deck and
+     * a grassy landing, then a small plaza with a mission-giver off to one side. No enemies anywhere — reachable
+     * from Select Chapter's extra row, not part of the real game's three levels. A few things in the sketch don't
+     * have a real content system to hook into yet, so they're stood in with the closest existing piece rather than
+     * faked: the planters are plain bush landmarks, the "blocked off until missions are done" deck is left open
+     * (there's no mission-flag system to gate it on), and the kid's line is a placeholder (no minigame exists).
+     * The plaza's mission spot is a flush, off-centre extra piece of the plaza itself (via {@link Builder#extend}),
+     * not a centred corridor — the sketch draws it jutting off one side, which is exactly what {@code extend()} is
+     * for and {@code attach()} can't do.
+     */
+    static Level protoSketch() {
+        Builder b = new Builder();
+        Room station = b.start("TRAIN STATION", 900, 520, new Roster());
+        Room deck = b.attach(station, Dir.SOUTH, "UPPER DECK", 850, 500, new Roster(), 150, 140);
+        Room grass = b.attach(deck, Dir.SOUTH, "GRASS", 550, 380, new Roster(), 150, 140);
+        Room plaza = b.attach(grass, Dir.SOUTH, "SMALL PLAZA", 900, 620, new Roster());
+        b.extend(plaza, 900, 400, 420, 220);   // flush against the plaza's right wall, low down — the NPC's spot
+        List<Door> doors = b.finish();
+
+        Rectangle2D.Double st = station.bounds;
+        Level level = new Level(b.rooms, doors, List.of(), st.getCenterX(), st.getCenterY() + 120, st.getCenterX(), st.y + 150);
+        level.name = "PROTOTYPE";
+        level.bossName = "";
+        level.theme = Theme.CITY;
+        level.hasStation = true;   // reuses Transit Town's shuttered station building for the "Train Station" room, no new art needed
+
+        level.landmarks.add(new Landmark("bush", st.x + 130, st.y + 90, 0));       // planters
+        level.landmarks.add(new Landmark("bush", st.getMaxX() - 130, st.y + 90, 0));
+        level.landmarks.add(new Landmark("bush", grass.bounds.x + 90, grass.bounds.getCenterY(), 0));
+        level.landmarks.add(new Landmark("bush", grass.bounds.getMaxX() - 90, grass.bounds.getCenterY(), 0));
+
+        Rectangle2D.Double npcSpot = plaza.parts.get(1);
+        level.npcs.add(new Npc("KID", "town.child.idle",
+            "Bet you can't hit that lamppost from here! (Placeholder - no mission system to hook this up to yet.)",
+            npcSpot.getCenterX(), npcSpot.getCenterY()));
+        return level;
     }
 
     /** Builds the doors and puts the hub's furniture in: the three trainers, and the spot the guide appears. */

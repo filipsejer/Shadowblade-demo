@@ -213,9 +213,14 @@ final class World {
             sound(Snd.MENU_BACK);
             return;
         }
-        if (in.pressed(KeyEvent.VK_DOWN) || in.pressed(KeyEvent.VK_S)) { chapterCursor = (chapterCursor + 1) % Level.COUNT; sound(Snd.MENU_MOVE); }
-        if (in.pressed(KeyEvent.VK_UP) || in.pressed(KeyEvent.VK_W)) { chapterCursor = (chapterCursor + Level.COUNT - 1) % Level.COUNT; sound(Snd.MENU_MOVE); }
-        if (in.pressed(KeyEvent.VK_ENTER) || in.pressed(KeyEvent.VK_E)) beginChapter(chapterCursor);
+        // one extra row beyond the real Level.COUNT levels: a hand-sketched prototype layout, not part of the actual game
+        int rows = Level.COUNT + 1;
+        if (in.pressed(KeyEvent.VK_DOWN) || in.pressed(KeyEvent.VK_S)) { chapterCursor = (chapterCursor + 1) % rows; sound(Snd.MENU_MOVE); }
+        if (in.pressed(KeyEvent.VK_UP) || in.pressed(KeyEvent.VK_W)) { chapterCursor = (chapterCursor + rows - 1) % rows; sound(Snd.MENU_MOVE); }
+        if (in.pressed(KeyEvent.VK_ENTER) || in.pressed(KeyEvent.VK_E)) {
+            if (chapterCursor == Level.COUNT) beginPrototype();
+            else beginChapter(chapterCursor);
+        }
     }
 
     /**
@@ -227,6 +232,25 @@ final class World {
         reset();
         stage = index;
         level = Level.create(stage);
+        player = new Player(level.spawnX, level.spawnY);
+        grantLevels(player, CHAPTER_SELECT_LEVEL);
+        camX = player.x;
+        camY = player.y;
+        markVisited();
+        banner = level.name;
+        bannerTimer = 3;
+        sound(Snd.TITLE_START);
+        state = State.PLAYING;
+    }
+
+    /**
+     * Select Chapter's extra row: {@link Level#protoSketch()}, a hand-drawn layout being tried out. Deliberately
+     * separate from {@link #beginChapter} — it doesn't touch {@link #stage}, so it can't interact with real level
+     * progression (there's no combat here for {@code endCombat()} to ever act on anyway).
+     */
+    private void beginPrototype() {
+        reset();
+        level = Level.protoSketch();
         player = new Player(level.spawnX, level.spawnY);
         grantLevels(player, CHAPTER_SELECT_LEVEL);
         camX = player.x;

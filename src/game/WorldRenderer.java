@@ -47,7 +47,7 @@ final class WorldRenderer {
             items.add(new Item(s.y() + 36, () -> drawShop(g, w, s)));
             shadow(g, s.x(), s.y() + 36, 46, 12);
         }
-        if (level.town) {                                       // the station is always there, just shuttered until level 1 is done
+        if (level.hasStation) {                                 // the station is always there, just shuttered until level 1 is done
             items.add(new Item(level.guideY + 44, () -> drawStation(g, w)));
             shadow(g, level.guideX, level.guideY + 46, 40, 12);
         } else if (level.guideAppeared) {

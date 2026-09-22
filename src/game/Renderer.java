@@ -507,8 +507,10 @@ final class Renderer {
             String title = "LEVEL " + (i + 1) + "   -   " + Level.BOSS_NAMES[i];
             menuRow(g, cx, y0 + i * (rowH + gap), rowW, rowH, title, Level.THEMES[i].title, w.chapterCursor == i);
         }
+        menuRow(g, cx, y0 + Level.COUNT * (rowH + gap), rowW, rowH, "PROTOTYPE", "a hand-sketched layout being tried out - no enemies",
+            w.chapterCursor == Level.COUNT);
         g.setFont(f14);
-        centered(g, "W / S choose      ENTER start      ESC back", cx, y0 + Level.COUNT * (rowH + gap) + 24, new Color(200, 200, 200));
+        centered(g, "W / S choose      ENTER start      ESC back", cx, y0 + (Level.COUNT + 1) * (rowH + gap) + 24, new Color(200, 200, 200));
     }
 
     /** A trainer's menu: their upgrades on the left, the selected one's details on the right. */
