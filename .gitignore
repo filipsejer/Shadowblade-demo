@@ -1,0 +1,20 @@
+# build output
+out/
+*.class
+
+# run.sh logs / crash dumps
+game.log
+hs_err_pid*.log
+
+# macOS
+.DS_Store
+
+# dev scratch files that have ended up in the project root (screenshots and audio samples
+# taken while tuning graphics/sound; not part of the game or the repo)
+*.wav
+19_boss_fight.png
+50_pause_sound_settings.png
+51_muted_badge.png
+52_title_with_sound_hint.png
+audio_lab_laugh.png
+audio_sfx_contact_sheet.png
