@@ -126,7 +126,9 @@ final class Level {
 
     /**
      * A single big piece of scenery placed by hand (the tutorial's tree, its logs and bushes). {@code kind} is "oak", "bush", "boulder",
-     * "stump" or "log"; (x, y) is where it stands on the ground; a positive {@code radius} makes it solid.
+     * "stump" or "log" (always drawn as forest art, whatever the level's theme — see {@code WorldRenderer.landmark}), or "planter"
+     * (the one kind that's actual city furniture, a terracotta planter box, for levels that want one). (x, y) is where it stands on
+     * the ground; a positive {@code radius} makes it solid.
      */
     record Landmark(String kind, double x, double y, double radius) {}
 
@@ -641,15 +643,15 @@ final class Level {
         level.bossName = "";
         level.theme = Theme.CITY;
 
-        // planters: solid (you walk around them, like a crate) — a row along the entrance's top wall, flanking the
-        // doorway up to the train station, same as the green band in the sketch (there's no dedicated planter
-        // sprite, so these reuse the bush art, per instruction)
+        // planters: actual planter boxes (city furniture, not a tree), solid — you walk around them like a crate,
+        // not over them. A row along the entrance's top wall, flanking the doorway up to the train station, same
+        // as the green band in the sketch
         for (double x : new double[]{en.x + 110, en.x + 180, en.getMaxX() - 180, en.getMaxX() - 110}) {
-            level.landmarks.add(new Landmark("bush", x, en.y + 55, 24));
+            level.landmarks.add(new Landmark("planter", x, en.y + 55, 22));
         }
-        // the grass/planter bed in the plaza's top-left corner, four bushes close together so it reads as one bed
+        // the planter bed in the plaza's top-left corner, four close together so it reads as one bed
         for (double[] p : new double[][]{{pz.x + 120, pz.y + 110}, {pz.x + 180, pz.y + 110}, {pz.x + 120, pz.y + 165}, {pz.x + 180, pz.y + 165}}) {
-            level.landmarks.add(new Landmark("bush", p[0], p[1], 22));
+            level.landmarks.add(new Landmark("planter", p[0], p[1], 22));
         }
         // the barricade: a walk-through row of logs across the deck
         for (double dy : new double[]{dk.y + 30, dk.getCenterY(), dk.getMaxY() - 30}) {
