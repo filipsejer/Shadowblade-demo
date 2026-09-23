@@ -50,6 +50,12 @@ a lot of MP (a full bar is about four Fireballs), MP only trickles back on its o
 hits, and each spell has its own cooldown. A failed cast (not enough MP, still cooling down, nothing to hit) leaves the
 list open and costs nothing.
 
+Two more indicators live on the character rather than in a HUD panel, so they stay wherever you're standing: a row of
+small dots under your feet lights up hit by hit to show how far through the attack chain you are, and a ring just to
+the right of you sweeps shut as your roll's cooldown charges back up — it isn't drawn at all while the roll is ready,
+and reappears the moment you use it. Both are drawn in `WorldRenderer` (`drawComboDots` / `drawRollCharge`), not
+`Renderer`'s screen-space HUD, so they scroll with the world instead of sitting fixed on screen.
+
 ## Air combos
 
 The game is still drawn top-down, but combat has a height axis: a combo's **finisher** (the last hit of a chain) launches
@@ -81,11 +87,13 @@ The game opens on a menu with two rows, **W / S** (or the arrows) to choose and 
 
 Both screens are built in `World.updateTitle` / `World.updateChapterSelect` / `World.beginChapter`, and drawn in `Renderer.drawTitle` / `Renderer.drawChapterSelect`.
 
+Select Chapter has one extra row below the three real levels: **PROTOTYPE**, a hand-drawn layout being tried out (`Level.protoSketch()`, `World.beginPrototype()`). It's not one of the three real levels — it doesn't count towards `Level.COUNT`, has no enemies, and can't be "cleared" — just a level built with the room-shape system (see **Room shapes**) to try against something someone actually sketched, before committing to it as a real room in a real level. Real rooms with real walls between them, a doorway pushed off-centre on two of them to match the sketch's zigzag (see **Room shapes**), and a couple of placeholders for systems that don't exist yet: the barricade across the deck is a row of plain, walk-through (`radius` 0) log landmarks standing in for real barricade art and the mission-flag system that would one day remove it; the two doors marked as exits to somewhere not yet designed lead to small, empty stub rooms rather than faking content that isn't there.
+
 ## Layout
 
 | File | What it does |
 | --- | --- |
-| `Level.java` | The maps: rooms, corridors (doors), the trainers, the guide's spot, the sealed boss door, and walkable-area collision. `Level.create(n)` builds level n (`levelOne()`, `levelTwo()`), `Level.tutorial()` the opening story's map, `Level.town()` Transit Town |
+| `Level.java` | The maps: rooms (each one or more glued-together rectangles — see **Room shapes** below), corridors (doors), the trainers, the guide's spot, the sealed boss door, and walkable-area collision. `Level.create(n)` builds level n (`levelOne()`, `levelTwo()`), `Level.tutorial()` the opening story's map, `Level.town()` Transit Town |
 | `Tutorial.java` / `Dialogue.java` | The opening story: the script (each lesson is a scene with the squirrel) and the speech box's rules (typewriter text, lines that wait for a key or are called out, the voice's chirps); `Dialogue` is reused as-is for Transit Town's locals |
 | `TownArt.java` | Transit Town's three locals and the train station, shuttered and lit |
 | `Breakable.java` / `BreakableArt.java` | The crates and barrels: their rules (solid, one hit, XP) and their sprites in a forest, city and laboratory look |
@@ -235,7 +243,7 @@ first number in `Snd.java`. Default volumes are in `AudioSettings.java`; the sav
 ## Where to tune things
 
 - **Enemy stats:** the `Type` enum in `Enemy.java`.
-- **Which enemies are in a room:** the `Roster` passed to each room in `Level.levelOne()` / `levelTwo()`.
+- **Which enemies are in a room (and how many waves):** the `Roster` passed to each room in `Level.levelOne()` / `levelTwo()`; chain `.nextWave()` calls onto it for a room with reinforcements.
 - **Room layout:** the `b.attach(...)` calls in `Level.levelOne()` / `levelTwo()`. Each one hangs a room off a side of another room; the corridor between them is made for you, and an overlap check stops you placing rooms on top of each other.
 - **Combo timing and damage:** constants at the top of `Player.java`, plus `startAttack()` / `doHit()`.
 - **Air combos:** `Player.LAUNCH_VZ` / `Enemy.GRAVITY` / `Enemy.JUGGLE_VZ`; the launch itself is `Enemy.launch()`, called from `Player.doHit()`'s finisher branch, and the fall / landing is the top of `Enemy.update()`.
@@ -266,6 +274,11 @@ there is a branch of rooms going north, east and south, and the boss room is to 
 ```
 
 - Walking into an unvisited room spawns its enemies and locks all of its doors (red bars). Kill everything to unlock them.
+- **Some rooms have a second wave:** a `Roster` can be built with `.nextWave()` (e.g. `new Roster().add(GRUNT, 4).nextWave().add(BRUTE, 2)`),
+  which spawns the first batch as normal but only sends in the second once the first is wiped out (after a 1.2s pause,
+  `World.NEXT_WAVE_DELAY`) — the room stays locked and "in combat" the whole time. In level 1 this is the three leaf
+  rooms at the end of a branch (**Fern Hollow**, **Old Shrine**, **Treasure Grove**); every other room is still a
+  single wave.
 - Clearing a room restores 25% HP and 50 MP. Cleared rooms stay empty.
 - **The boss door is sealed** (purple bars, "SEALED") until all 9 other rooms are cleared. The level is cleared when the
   boss dies.
@@ -318,6 +331,41 @@ there is a branch of rooms going north, east and south, and the boss room is to 
   a group isn't in step. A locked-on shade that goes into shadow keeps its lock on hold and gets it back when solid.
 - To add a room: call `b.attach(existingRoom, Dir.NORTH / EAST / SOUTH / WEST, "NAME", width, height, roster)` in
   `Level.levelOne()` / `levelTwo()` (or a new level method, then add it to `Level.create` and raise `Level.COUNT`). To add a trainer, add a `Station` to the list at the bottom of it.
+
+## Room shapes
+
+A room isn't only ever a single rectangle — `Builder.extend(room, dx, dy, w, h)` glues another rectangle onto one, at
+an offset from its first piece's top-left corner, so a room can be an L, a cross, a wide chamber with a little alcove
+off it, anything built out of boxes (see `Level.testShapes()` for a worked synthetic example, and `Level.protoSketch()`
+— reachable in-game from Select Chapter's extra **PROTOTYPE** row — for the small plaza's kid-mission corridor, a
+long extra piece glued flush onto its east wall). It's still no corridor and no new connected room — just growing
+that one room's own footprint — and every piece of it (collision, the floor bake, the minimap, prop scattering, where
+enemies spawn) treats the whole cluster as one seamless room, not several.
+
+A doorway between two separate rooms doesn't have to sit centred on the shared wall either: `Builder.attach(...)`
+takes an optional corridor width and length, and beyond that an optional `doorOffset` — how far off centre the
+doorway itself sits (positive east for a north/south doorway, positive south for an east/west one), while the two
+rooms stay placed centred on each other exactly as `attach()` always has. That's how `Level.protoSketch()`'s zigzag
+staircase works: one doorway biased west, the next biased east, both still ordinary centred rooms. See
+`Level.testOffCentreDoors()` for a minimal worked example.
+
+**Placing pieces:** give `extend()` a piece flush against the one it's meant to join — no need to fudge a gap or an
+overlap yourself. It grows a little way past that seam on its own (`Builder.bridge()`, the same idea as a door's own
+walkable area reaching a little way into the rooms on either side of it): two rectangles that only ever touch at a
+single line would otherwise leave a body-radius-wide gap neither one claims, where you'd get stuck standing right at
+the seam.
+
+**What it can't do:** every piece is still an axis-aligned rectangle — no diagonal walls, no curves. That's a
+deliberate trade-off: real polygon collision would mean rewriting how a body finds its way out of a wall (right now
+just "clamp to the nearest edge of the nearest rectangle"), and touching the minimap and every existing level along
+with it. Rectangles glued together, plus an off-centre doorway where a corridor needs one, get most of the way to a
+hand-drawn map's variety — wide chambers, alcoves, jogged corridors, zigzag staircases — for a much smaller, much
+safer change.
+
+**Grass patches** (`level.grassPatches`, a plain list of rectangles) are solid ground sitting on top of a room's
+floor rather than cut out of it — real grass tiling (always forest tiling, whatever the level's own theme, the same
+idea as `Landmark`'s forest art), but you can't stand on it at all, the same as a wall, rather than a prop you walk
+around. `Level.protoSketch()` uses them for the grass either side of its entrance doorway and the bed in its plaza.
 
 ## Minimap
 

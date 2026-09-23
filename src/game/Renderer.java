@@ -11,7 +11,6 @@ import java.awt.Shape;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Arc2D;
 import java.awt.geom.Area;
-import java.awt.geom.Ellipse2D;
 import java.awt.geom.Line2D;
 import java.awt.geom.Path2D;
 import java.awt.geom.Rectangle2D;
@@ -190,14 +189,7 @@ final class Renderer {
             centered(g, w.banner, width / 2.0, height * 0.3, Util.alpha(Color.WHITE, Math.min(1, w.bannerTimer)));
         }
 
-        // roll indicator (bottom centre) and the command menu (bottom left)
-        double size = 68;
-        if (tut == null || tut.showRoll()) {
-            actionBox(g, (width - size) / 2, height - size - 26, size, "SPACE", "Roll", new Color(200, 200, 210), p.dodgeCd / p.dodgeCooldown, true);
-            if (tut != null && tut.focus() == Tutorial.Focus.ROLL) {
-                pulse(g, new RoundRectangle2D.Double((width - size) / 2 - 5, height - size - 31, size + 10, size + 10, 14, 14), w.time);
-            }
-        }
+        // the command menu (bottom left); the roll charge ring and combo dots are drawn beside/under the player in world space
         if (tut == null || tut.showMenu()) drawCommandMenu(g, p, height, tut, w.time);
     }
 
@@ -263,14 +255,6 @@ final class Renderer {
                 g.setColor(text);
                 g.setStroke(new BasicStroke(2.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
                 g.draw(chevron);
-            }
-            if (item == CommandMenu.Item.ATTACK) {               // combo progress
-                int progress = p.comboProgress();
-                for (int k = 0; k < p.comboMax; k++) {
-                    double dx = x + rowW - 14 - (p.comboMax - 1 - k) * 11;
-                    g.setColor(k < progress ? new Color(255, 215, 90) : new Color(10, 10, 14, 220));
-                    g.fill(new Ellipse2D.Double(dx - 4, ry + rowInner / 2 - 4, 8, 8));
-                }
             }
         }
 
@@ -428,25 +412,6 @@ final class Renderer {
         g.drawString(p.menu.shiftOpened ? "ENTER cast     release SHIFT to close" : "ENTER cast     LEFT back", (float) x, (float) (top - 8));
     }
 
-    private void actionBox(Graphics2D g, double x, double y, double s, String key, String label, Color accent,
-                           double cooldownFrac, boolean usable) {
-        RoundRectangle2D box = new RoundRectangle2D.Double(x, y, s, s, 10, 10);
-        g.setColor(new Color(24, 24, 28, 220));
-        g.fill(box);
-        g.setColor(Util.alpha(accent, usable ? 0.9 : 0.35));
-        g.setStroke(new BasicStroke(2.5f));
-        g.draw(box);
-        if (cooldownFrac > 0) {
-            g.setColor(new Color(255, 255, 255, 60));
-            double h = s * Util.clamp(cooldownFrac, 0, 1);
-            g.fill(new Rectangle2D.Double(x + 2, y + s - h, s - 4, Math.max(0, h - 2)));
-        }
-        g.setFont(key.length() > 2 ? f14b : f26b);
-        centered(g, key, x + s / 2, y + s / 2 + (key.length() > 2 ? 2 : 6), usable ? Color.WHITE : new Color(150, 150, 155));
-        g.setFont(f12);
-        centered(g, label, x + s / 2, y + s - 8, usable ? Util.alpha(accent, 1) : new Color(120, 120, 125));
-    }
-
     // ------------------------------------------------------------------ overlays
 
     private void dim(Graphics2D g, int width, int height, int alpha) {
@@ -507,8 +472,10 @@ final class Renderer {
             String title = "LEVEL " + (i + 1) + "   -   " + Level.BOSS_NAMES[i];
             menuRow(g, cx, y0 + i * (rowH + gap), rowW, rowH, title, Level.THEMES[i].title, w.chapterCursor == i);
         }
+        menuRow(g, cx, y0 + Level.COUNT * (rowH + gap), rowW, rowH, "PROTOTYPE", "a hand-sketched layout being tried out - no enemies",
+            w.chapterCursor == Level.COUNT);
         g.setFont(f14);
-        centered(g, "W / S choose      ENTER start      ESC back", cx, y0 + Level.COUNT * (rowH + gap) + 24, new Color(200, 200, 200));
+        centered(g, "W / S choose      ENTER start      ESC back", cx, y0 + (Level.COUNT + 1) * (rowH + gap) + 24, new Color(200, 200, 200));
     }
 
     /** A trainer's menu: their upgrades on the left, the selected one's details on the right. */

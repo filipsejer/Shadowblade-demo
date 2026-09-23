@@ -4,8 +4,10 @@ import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.RadialGradientPaint;
+import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.Shape;
+import java.awt.TexturePaint;
 import java.awt.geom.Area;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
@@ -52,7 +54,7 @@ final class LevelView {
             this.key = key;
             this.art = ThemeArt.of(lv.theme);
             Area a = new Area();
-            for (Level.Room r : lv.rooms) a.add(new Area(r.bounds));
+            for (Level.Room r : lv.rooms) for (Rectangle2D.Double p : r.parts) a.add(new Area(p));
             for (Level.Door d : lv.doors) a.add(new Area(d.gap));
             this.floor = a;
             Area stroked = new Area(new BasicStroke((float) (WALL * 2), BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f).createStrokedShape(a));
@@ -67,11 +69,26 @@ final class LevelView {
         @Override protected boolean removeEldestEntry(Map.Entry<String, BufferedImage> eldest) { return size() > 26; }
     };
     private static final Map<Long, BufferedImage> GLOWS = new HashMap<>();
+    private static TexturePaint grass;
+
+    /** Real grass tiling, regardless of the level's own theme — for a grass patch dropped into a city or lab level. */
+    private static TexturePaint grassPaint() {
+        if (grass == null) {
+            BufferedImage tile = ThemeArt.of(Theme.FOREST).ground[0];
+            grass = new TexturePaint(tile, new Rectangle(0, 0, tile.getWidth(), tile.getHeight()));
+        }
+        return grass;
+    }
 
     private Baked baked;
 
+    /** Distinguishes levels whose bake would otherwise look identical (same theme, size and room count) but whose rooms are shaped differently. */
     private static String keyOf(Level lv) {
-        return lv.theme + ":" + (int) lv.width + "x" + (int) lv.height + ":" + lv.rooms.size();
+        long shape = 0;
+        for (Level.Room r : lv.rooms) for (Rectangle2D.Double p : r.parts) {
+            shape = shape * 1000003 + (long) p.x * 97 + (long) p.y * 89 + (long) p.width * 83 + (long) p.height * 79;
+        }
+        return lv.theme + ":" + (int) lv.width + "x" + (int) lv.height + ":" + lv.rooms.size() + ":" + shape;
     }
 
     /** Finds (or paints, the first time) the cached background for this level. */
@@ -104,6 +121,15 @@ final class LevelView {
         }
 
         prefetch(b, cx0 - 1, cx1 + 1, cy0 - 1, cy1 + 1);
+
+        for (Rectangle2D.Double r : lv.grassPatches) {              // solid grass beds, sitting on top of the floor beneath them
+            if (!view.intersects(r)) continue;
+            g.setPaint(grassPaint());
+            g.fill(r);
+            g.setColor(new Color(0, 0, 0, 70));
+            g.setStroke(new BasicStroke(4f));
+            g.draw(r);
+        }
 
         for (Level.Door d : lv.doors) {                             // closed doors: bramble / shutters / a purple seal
             if (d.open() || !view.intersects(d.gap)) continue;
@@ -184,7 +210,9 @@ final class LevelView {
 
     private static BufferedImage[] tilesAt(Level lv, ThemeArt art, double x, double y) {
         for (Level.Room r : lv.rooms) {
-            if (r.bounds.contains(x, y)) return r.gated ? art.boss : r.state == Level.Room.State.SAFE ? art.plaza : art.ground;
+            for (Rectangle2D.Double p : r.parts) {
+                if (p.contains(x, y)) return r.gated ? art.boss : r.state == Level.Room.State.SAFE ? art.plaza : art.ground;
+            }
         }
         for (Level.Door d : lv.doors) if (d.gap.contains(x, y)) return art.path;
         return art.ground;
@@ -240,58 +268,61 @@ final class LevelView {
         }
 
         for (Level.Room room : lv.rooms) {
-            Rectangle2D b = room.bounds;
-            // things lying on the floor (the city's boss room is bare steel: no road markings there)
-            int n = room.gated && lv.theme == Theme.CITY ? 0 : (int) (b.getWidth() * b.getHeight() / (forest ? 15000 : lv.theme == Theme.LAB ? 26000 : 30000));
-            for (int i = 0; i < n; i++) {
-                double x = b.getX() + 60 + rng.nextDouble() * (b.getWidth() - 120);
-                double y = b.getY() + 60 + rng.nextDouble() * (b.getHeight() - 120);
-                if (nearInteractive(lv, x, y)) continue;
-                boolean blocked = false;
-                for (Rectangle2D k : keepClear) if (k.contains(x, y)) blocked = true;
-                if (blocked) continue;
-                bk.flat.add(new Prop(a.floorProps[rng.nextInt(a.floorProps.length)], x, y, rng.nextBoolean(), 0));
-            }
-            // scenery around the outside of the walls: N / E / W get tall things, S gets low ones
-            for (int side = 0; side < 4; side++) {
-                boolean horizontal = side == 0 || side == 2;          // 0 north, 1 east, 2 south, 3 west
-                double len = horizontal ? b.getWidth() : b.getHeight();
-                double pos = 30 + rng.nextDouble() * 50;
-                while (pos < len - 30) {
-                    double x, y;
-                    double off = 26 + rng.nextDouble() * 22;
-                    switch (side) {
-                        case 0 -> { x = b.getX() + pos; y = b.getY() - off; }
-                        case 2 -> { x = b.getX() + pos; y = b.getMaxY() + off + 24; }
-                        case 1 -> { x = b.getMaxX() + off; y = b.getY() + pos; }
-                        default -> { x = b.getX() - off; y = b.getY() + pos; }
-                    }
-                    if (outsideAll(lv, x, y) && !nearDoor(lv, x, y)) {
-                        Sprite s;
-                        int glow = 0;
-                        if (side == 2) s = a.low[rng.nextInt(a.low.length)];
-                        else if (rng.nextInt(10) < 7) {
-                            int idx = rng.nextInt(a.tall.length);
-                            s = a.tall[idx];
-                            if (lv.theme == Theme.CITY) {
-                                if (idx == 0 || idx == 3) glow = 0x01FFE7A0;                            // warm lamp light
-                                else if (idx == 1) glow = 0x02FF5AB4;                                   // pink neon
-                                else if (idx == 4) glow = 0x0278F0FF;                                   // cyan neon
-                            } else if (lv.theme == Theme.LAB) {
-                                glow = switch (idx) {
-                                    case 0 -> 0x0250FF90;                                               // green tank
-                                    case 1 -> 0x02B98CFF;                                               // tesla coil
-                                    case 2 -> 0x0278B4FF;                                               // server lights
-                                    case 3 -> 0x02FF6EBE;                                               // pink tank
-                                    default -> 0x01C8FFF8;                                              // fluorescent lamp
-                                };
-                            }
-                        } else s = a.low[rng.nextInt(a.low.length)];
-                        bk.scenery.add(new Prop(s, x, y, rng.nextBoolean(), glow));
-                    }
-                    pos += 78 + rng.nextDouble() * 70;
+            for (Rectangle2D.Double b : room.parts) {                    // a multi-part room just runs this once per piece: each piece's own
+                                                                           // exterior gets scenery, and the check below already skips any edge
+                                                                           // that's actually another piece of the same room, not a real wall
+                // things lying on the floor (the city's boss room is bare steel: no road markings there)
+                int n = room.gated && lv.theme == Theme.CITY ? 0 : (int) (b.getWidth() * b.getHeight() / (forest ? 15000 : lv.theme == Theme.LAB ? 26000 : 30000));
+                for (int i = 0; i < n; i++) {
+                    double x = b.getX() + 60 + rng.nextDouble() * (b.getWidth() - 120);
+                    double y = b.getY() + 60 + rng.nextDouble() * (b.getHeight() - 120);
+                    if (nearInteractive(lv, x, y)) continue;
+                    boolean blocked = false;
+                    for (Rectangle2D k : keepClear) if (k.contains(x, y)) blocked = true;
+                    if (blocked) continue;
+                    bk.flat.add(new Prop(a.floorProps[rng.nextInt(a.floorProps.length)], x, y, rng.nextBoolean(), 0));
                 }
-                if (a.facade.length > 0) addWindows(lv, a, rng, b, side, bk.scenery);
+                // scenery around the outside of the walls: N / E / W get tall things, S gets low ones
+                for (int side = 0; side < 4; side++) {
+                    boolean horizontal = side == 0 || side == 2;          // 0 north, 1 east, 2 south, 3 west
+                    double len = horizontal ? b.getWidth() : b.getHeight();
+                    double pos = 30 + rng.nextDouble() * 50;
+                    while (pos < len - 30) {
+                        double x, y;
+                        double off = 26 + rng.nextDouble() * 22;
+                        switch (side) {
+                            case 0 -> { x = b.getX() + pos; y = b.getY() - off; }
+                            case 2 -> { x = b.getX() + pos; y = b.getMaxY() + off + 24; }
+                            case 1 -> { x = b.getMaxX() + off; y = b.getY() + pos; }
+                            default -> { x = b.getX() - off; y = b.getY() + pos; }
+                        }
+                        if (outsideAll(lv, x, y) && !nearDoor(lv, x, y)) {
+                            Sprite s;
+                            int glow = 0;
+                            if (side == 2) s = a.low[rng.nextInt(a.low.length)];
+                            else if (rng.nextInt(10) < 7) {
+                                int idx = rng.nextInt(a.tall.length);
+                                s = a.tall[idx];
+                                if (lv.theme == Theme.CITY) {
+                                    if (idx == 0 || idx == 3) glow = 0x01FFE7A0;                            // warm lamp light
+                                    else if (idx == 1) glow = 0x02FF5AB4;                                   // pink neon
+                                    else if (idx == 4) glow = 0x0278F0FF;                                   // cyan neon
+                                } else if (lv.theme == Theme.LAB) {
+                                    glow = switch (idx) {
+                                        case 0 -> 0x0250FF90;                                               // green tank
+                                        case 1 -> 0x02B98CFF;                                               // tesla coil
+                                        case 2 -> 0x0278B4FF;                                               // server lights
+                                        case 3 -> 0x02FF6EBE;                                               // pink tank
+                                        default -> 0x01C8FFF8;                                              // fluorescent lamp
+                                    };
+                                }
+                            } else s = a.low[rng.nextInt(a.low.length)];
+                            bk.scenery.add(new Prop(s, x, y, rng.nextBoolean(), glow));
+                        }
+                        pos += 78 + rng.nextDouble() * 70;
+                    }
+                    if (a.facade.length > 0) addWindows(lv, a, rng, b, side, bk.scenery);
+                }
             }
         }
         bk.scenery.sort(Comparator.comparingDouble(p -> p.y));
@@ -321,7 +352,7 @@ final class LevelView {
 
     /** True if the point isn't inside any room or corridor (open or not), with a little margin. */
     private static boolean outsideAll(Level lv, double x, double y) {
-        for (Level.Room r : lv.rooms) if (inflate(r.bounds, 14).contains(x, y)) return false;
+        for (Level.Room r : lv.rooms) for (Rectangle2D.Double p : r.parts) if (inflate(p, 14).contains(x, y)) return false;
         for (Level.Door d : lv.doors) if (inflate(d.gap, 14).contains(x, y)) return false;
         return true;
     }

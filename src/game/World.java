@@ -2,6 +2,7 @@ package game;
 
 import java.awt.Color;
 import java.awt.event.KeyEvent;
+import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -19,6 +20,9 @@ final class World {
     int stage;                      // which level we're on (0 = the first)
     double fade;                    // 1 -> 0 after travelling to a new level: a black screen fading in
     Level.Room activeRoom;          // the room currently in combat, or null
+    /** Counts down after a wave is wiped out and the room has another one coming; the next wave spawns at 0. */
+    double nextWaveTimer;
+    static final double NEXT_WAVE_DELAY = 1.2;
     Player player;
     final List<Enemy> enemies = new ArrayList<>();
     final List<Projectile> projectiles = new ArrayList<>();
@@ -94,6 +98,7 @@ final class World {
         level = Level.create(stage);
         fade = 0;
         activeRoom = null;
+        nextWaveTimer = 0;
         player = new Player(level.spawnX, level.spawnY);
         markVisited();
         enemies.clear();
@@ -212,9 +217,14 @@ final class World {
             sound(Snd.MENU_BACK);
             return;
         }
-        if (in.pressed(KeyEvent.VK_DOWN) || in.pressed(KeyEvent.VK_S)) { chapterCursor = (chapterCursor + 1) % Level.COUNT; sound(Snd.MENU_MOVE); }
-        if (in.pressed(KeyEvent.VK_UP) || in.pressed(KeyEvent.VK_W)) { chapterCursor = (chapterCursor + Level.COUNT - 1) % Level.COUNT; sound(Snd.MENU_MOVE); }
-        if (in.pressed(KeyEvent.VK_ENTER) || in.pressed(KeyEvent.VK_E)) beginChapter(chapterCursor);
+        // one extra row beyond the real Level.COUNT levels: a hand-sketched prototype layout, not part of the actual game
+        int rows = Level.COUNT + 1;
+        if (in.pressed(KeyEvent.VK_DOWN) || in.pressed(KeyEvent.VK_S)) { chapterCursor = (chapterCursor + 1) % rows; sound(Snd.MENU_MOVE); }
+        if (in.pressed(KeyEvent.VK_UP) || in.pressed(KeyEvent.VK_W)) { chapterCursor = (chapterCursor + rows - 1) % rows; sound(Snd.MENU_MOVE); }
+        if (in.pressed(KeyEvent.VK_ENTER) || in.pressed(KeyEvent.VK_E)) {
+            if (chapterCursor == Level.COUNT) beginPrototype();
+            else beginChapter(chapterCursor);
+        }
     }
 
     /**
@@ -226,6 +236,25 @@ final class World {
         reset();
         stage = index;
         level = Level.create(stage);
+        player = new Player(level.spawnX, level.spawnY);
+        grantLevels(player, CHAPTER_SELECT_LEVEL);
+        camX = player.x;
+        camY = player.y;
+        markVisited();
+        banner = level.name;
+        bannerTimer = 3;
+        sound(Snd.TITLE_START);
+        state = State.PLAYING;
+    }
+
+    /**
+     * Select Chapter's extra row: {@link Level#protoSketch()}, a hand-drawn layout being tried out. Deliberately
+     * separate from {@link #beginChapter} — it doesn't touch {@link #stage}, so it can't interact with real level
+     * progression (there's no combat here for {@code endCombat()} to ever act on anyway).
+     */
+    private void beginPrototype() {
+        reset();
+        level = Level.protoSketch();
         player = new Player(level.spawnX, level.spawnY);
         grantLevels(player, CHAPTER_SELECT_LEVEL);
         camX = player.x;
@@ -321,7 +350,7 @@ final class World {
         updateBlasts(dt);
         updateZones(dt);
         updateEffects(dt);
-        if (tutorial == null) updateRooms();                     // the tutorial opens and closes its own doors
+        if (tutorial == null) updateRooms(dt);                   // the tutorial opens and closes its own doors
         collectDead();
 
         if (player.hp <= 0) {
@@ -394,6 +423,14 @@ final class World {
                 if (out != null) { e.x = out.x(); e.y = out.y(); }
             }
         }
+        for (Rectangle2D.Double g : level.grassPatches) {           // solid ground you can't walk on, e.g. a flower bed
+            Util.Vec out = aroundRect(g, player.x, player.y, player.radius);
+            if (out != null) { player.x = out.x(); player.y = out.y(); }
+            for (Enemy e : enemies) {
+                out = aroundRect(g, e.x, e.y, e.radius);
+                if (out != null) { e.x = out.x(); e.y = out.y(); }
+            }
+        }
         for (Enemy e : enemies) {
             Util.Vec v = level.clamp(e.x, e.y, e.radius);
             e.x = v.x();
@@ -424,6 +461,18 @@ final class World {
             py += perpY * side * nudge;
         }
         return new Util.Vec(px, py);
+    }
+
+    /** Where a body of radius r at (x, y) ends up when it is pushed out of a solid rectangle, or null if it is already clear of it (with r's worth of clearance all round). Pushed straight out to whichever edge is nearest. */
+    private static Util.Vec aroundRect(Rectangle2D.Double rect, double x, double y, double r) {
+        double minX = rect.x - r, maxX = rect.getMaxX() + r, minY = rect.y - r, maxY = rect.getMaxY() + r;
+        if (x <= minX || x >= maxX || y <= minY || y >= maxY) return null;
+        double left = x - minX, right = maxX - x, top = y - minY, bottom = maxY - y;
+        double m = Math.min(Math.min(left, right), Math.min(top, bottom));
+        if (m == left) return new Util.Vec(minX, y);
+        if (m == right) return new Util.Vec(maxX, y);
+        if (m == top) return new Util.Vec(x, minY);
+        return new Util.Vec(x, maxY);
     }
 
     /** Breaks a crate or barrel: splinters, a puff, a sound, and its XP floating up. */
@@ -630,13 +679,21 @@ final class World {
 
     // ------------------------------------------------------------------ rooms
 
-    /** Walking into an unvisited room spawns its enemies and locks its doors; killing them all opens the doors again. */
-    private void updateRooms() {
+    /**
+     * Walking into an unvisited room spawns its first wave and locks its doors; killing it either spawns the room's
+     * next wave (a beat later, so the room doesn't feel like it's cheating) or, once the last wave is down, clears
+     * the room and opens the doors again.
+     */
+    private void updateRooms(double dt) {
         if (activeRoom == null) {
             Level.Room room = level.roomAt(player.x, player.y, Level.TRIGGER_INSET);
             if (room != null && room.state == Level.Room.State.UNVISITED) startCombat(room);
+        } else if (nextWaveTimer > 0) {
+            nextWaveTimer -= dt;
+            if (nextWaveTimer <= 0) spawnNextWave();
         } else if (enemies.isEmpty()) {
-            endCombat();
+            if (activeRoom.onLastWave()) endCombat();
+            else nextWaveTimer = NEXT_WAVE_DELAY;
         }
     }
 
@@ -644,11 +701,17 @@ final class World {
         activeRoom = room;
         room.state = Level.Room.State.COMBAT;
         level.refresh();                       // closes the doors
-        for (Enemy.Type type : room.spawns) spawnEnemy(type, room);
+        for (Enemy.Type type : room.currentWave()) spawnEnemy(type, room);
         sound(themed(Snd.LOCK_FOREST, Snd.LOCK_CITY, Snd.LOCK_LAB));
-        if (room.spawns.contains(Enemy.Type.BOSS)) sound(Snd.BOSS_INTRO);
+        if (room.currentWave().contains(Enemy.Type.BOSS)) sound(Snd.BOSS_INTRO);
         banner = room.name;
         bannerTimer = 2.2;
+    }
+
+    private void spawnNextWave() {
+        activeRoom.wave++;
+        for (Enemy.Type type : activeRoom.currentWave()) spawnEnemy(type, activeRoom);
+        sound(themed(Snd.LOCK_FOREST, Snd.LOCK_CITY, Snd.LOCK_LAB));
     }
 
     private void endCombat() {
@@ -707,8 +770,10 @@ final class World {
         final double margin = 90;
         double x = 0, y = 0;
         for (int tries = 0; tries < 30; tries++) {
-            x = room.bounds.x + margin + rng.nextDouble() * (room.bounds.width - 2 * margin);
-            y = room.bounds.y + margin + rng.nextDouble() * (room.bounds.height - 2 * margin);
+            Rectangle2D.Double part = room.parts.get(rng.nextInt(room.parts.size()));   // multi-part rooms spawn into any of their pieces
+            double mx = Math.min(margin, part.width / 2 - 1), my = Math.min(margin, part.height / 2 - 1);
+            x = part.x + mx + rng.nextDouble() * (part.width - 2 * mx);
+            y = part.y + my + rng.nextDouble() * (part.height - 2 * my);
             if (Util.dist(x, y, player.x, player.y) > 320) break;
         }
         enemies.add(new Enemy(type, x, y, level.hpMult(type), level.damageMult(type), rng));
@@ -717,7 +782,10 @@ final class World {
 
     /** Text for the top of the HUD: the room you're in, and how the fight is going. */
     String roomStatus() {
-        if (activeRoom != null) return activeRoom.name + "   -   " + enemies.size() + " left";
+        if (activeRoom != null) {
+            if (enemies.isEmpty() && nextWaveTimer > 0) return activeRoom.name + "   -   more incoming...";
+            return activeRoom.name + "   -   " + enemies.size() + " left";
+        }
         Level.Room room = level.roomAt(player.x, player.y, 0);
         if (room == null) return "";
         return room.state == Level.Room.State.CLEARED ? room.name + "   -   cleared" : room.name;
@@ -769,6 +837,7 @@ final class World {
     /** The part every arrival shares, wherever {@link #level} now points: a clean slate, healed, at the spawn point. */
     private void arrive() {
         activeRoom = null;
+        nextWaveTimer = 0;
         enemies.clear();
         arrivals.clear();
         blasts.clear();
