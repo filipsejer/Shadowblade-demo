@@ -56,6 +56,28 @@ the right of you sweeps shut as your roll's cooldown charges back up — it isn'
 and reappears the moment you use it. Both are drawn in `WorldRenderer` (`drawComboDots` / `drawRollCharge`), not
 `Renderer`'s screen-space HUD, so they scroll with the world instead of sitting fixed on screen.
 
+## Air combos
+
+The game is still drawn top-down, but combat has a height axis: a combo's **finisher** (the last hit of a chain) launches
+whatever it connects with into the air, and you can keep juggling it there.
+
+- **Launching.** Only the finisher hit calls `Enemy.launch()`; the regular hits earlier in a combo never do. Heavier
+  enemies (a higher `Type.resist`, the same stat that already softens knockback) go up proportionally less — a Brute
+  barely leaves the ground. Armored enemies (**the boss**) can't be launched at all, so a boss fight is never trivialised
+  into a juggle.
+- **Falling.** Gravity (`Enemy.GRAVITY`) pulls it back down; the sprite draws offset above its shadow, which stays on
+  the ground the whole time, so you can always see where it's about to land.
+- **Juggling.** Any hit that lands on an airborne enemy — melee or a spell, it doesn't matter — gives it a small
+  upward nudge (`Enemy.JUGGLE_VZ`), so a follow-up combo (or a Fireball) keeps it up rather than letting it drop.
+  Damage numbers and impact sparks float up with it.
+- **While it's airborne** an enemy has no AI at all (it can't move, attack, or wind anything up), and it doesn't push
+  or get pushed by anything solid (other enemies, the player, trees, crates) — it's simply out of the way until it
+  comes back down. It's still a completely valid target: lock-on, melee and spells all work on it as normal.
+- **Landing** plays a thump and a puff of dust, and leaves it staggered (briefly unable to act) before its AI resumes.
+
+Tune the height and weight of it all via `Player.LAUNCH_VZ` (how hard a finisher launches), `Enemy.GRAVITY` (how fast
+it falls) and `Enemy.JUGGLE_VZ` (how much each juggle hit adds) in `Player.java` / `Enemy.java`.
+
 ## Main menu
 
 The game opens on a menu with two rows, **W / S** (or the arrows) to choose and **Enter** to confirm:
@@ -224,6 +246,7 @@ first number in `Snd.java`. Default volumes are in `AudioSettings.java`; the sav
 - **Which enemies are in a room (and how many waves):** the `Roster` passed to each room in `Level.levelOne()` / `levelTwo()`; chain `.nextWave()` calls onto it for a room with reinforcements.
 - **Room layout:** the `b.attach(...)` calls in `Level.levelOne()` / `levelTwo()`. Each one hangs a room off a side of another room; the corridor between them is made for you, and an overlap check stops you placing rooms on top of each other.
 - **Combo timing and damage:** constants at the top of `Player.java`, plus `startAttack()` / `doHit()`.
+- **Air combos:** `Player.LAUNCH_VZ` / `Enemy.GRAVITY` / `Enemy.JUGGLE_VZ`; the launch itself is `Enemy.launch()`, called from `Player.doHit()`'s finisher branch, and the fall / landing is the top of `Enemy.update()`.
 - **Spell numbers:** the arrays at the top of `Spells.java` (damage etc.) and the cost / cooldown in `Ability.java`. Keep the descriptions in `Ability.java` in sync. Melee gives back MP per hit: `mpPerHit` in `Player.java`.
 - **New upgrades:** add a `Stat` to the list in `UpgradePool.java`. Costs: spells and combo hits in `UpgradePool`, stats are 1 point each.
 - **Skill points per level-up:** `SKILL_POINTS_PER_LEVEL` in `World.java`.

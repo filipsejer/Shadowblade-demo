@@ -49,6 +49,10 @@ final class Enemy {
     static final double SHADOW_PERIOD = 5.0;
     /** How fast the final boss's stage-two charge attack travels. */
     static final double CHARGE_SPEED = 620;
+    /** How fast a launched enemy falls back down. */
+    static final double GRAVITY = 1500;
+    /** The little upward nudge any hit gives an already-airborne enemy, so a combo keeps it up a while longer. */
+    static final double JUGGLE_VZ = 110;
 
     private static final Color BURN_TEXT = new Color(255, 160, 60);
 
@@ -59,6 +63,7 @@ final class Enemy {
     double lastX, lastY;        // where it stood at the start of the frame
     double hp, maxHp;
     double kx, ky;              // knockback velocity
+    double z, vz;                // height off the ground and vertical velocity: launched into the air by a finisher, pulled back down by gravity
 
     State state = State.CHASE;
     double stateTimer;
@@ -116,8 +121,20 @@ final class Enemy {
     /** In shadow mode: can't attack, can't be attacked, can't be pushed around. */
     boolean intangible() { return type.shadowy && shadow; }
 
+    /** Off the ground: launched by a finisher, or still hanging in the air from one. No AI while it's up here, and nothing shoves it around. */
+    boolean airborne() { return z > 0.5; }
+
     /** Alive and solid: the only kind of enemy attacks, spells and the lock-on can pick. */
     boolean targetable() { return hp > 0 && !intangible() && stageTimer <= 0; }
+
+    /**
+     * A finisher's launcher: pops the enemy into the air to start a juggle. Heavier enemies (higher
+     * {@link Type#resist}) go up less; armored enemies (the boss) not at all — juggling him would trivialise the fight.
+     */
+    void launch(double vz0) {
+        if (type.armored) return;
+        vz = Math.max(vz, vz0 * (1 - type.resist));
+    }
 
     /** A sword blow. */
     void hurt(World w, double dmg, double kbx, double kby, double stunTime) {
@@ -141,13 +158,14 @@ final class Enemy {
         double k = 1 - type.resist;
         kx += kbx * k;
         ky += kby * k;
+        if (airborne()) vz = Math.max(vz, JUGGLE_VZ * k);   // a hit while they're up keeps them up a little longer: that's the juggle
         if (stunTime > 0 && !type.armored) {
             // Any real hit stuns the enemy and cancels an attack it was winding up.
             // (Burn and Ice Storm ticks pass 0 so they never stun.)
             stun = Math.max(stun, stunTime * k);
             if (state == State.WINDUP) interrupt();
         }
-        w.effects.add(Effect.text(x + (w.rng.nextDouble() - 0.5) * 14, y - radius - 6,
+        w.effects.add(Effect.text(x + (w.rng.nextDouble() - 0.5) * 14, y - radius - 6 - z,
             String.valueOf(Math.max(1, (int) Math.round(dmg))), textColor, false));
         if (shellOnHit && !shelled && !magic && hp > 0) curlUp(w);
     }
@@ -235,6 +253,16 @@ final class Enemy {
         kx *= drag;
         ky *= drag;
 
+        if (z > 0 || vz != 0) {          // gravity always applies too, even mid-stun: a launched enemy falls regardless
+            z += vz * dt;
+            vz -= GRAVITY * dt;
+            if (z <= 0) {
+                z = 0;
+                vz = 0;
+                land(w);
+            }
+        }
+
         if (burnTimer > 0) {
             burnTimer -= dt;
             burnTick -= dt;
@@ -250,20 +278,35 @@ final class Enemy {
         if (type.shadowy) updateShadow(w, dt);
         if (stun > 0) { stun -= dt; return; }
 
-        Player p = w.player;
-        double dx = p.x - x, dy = p.y - y;
-        double dist = Math.max(0.001, Math.hypot(dx, dy));
-        double ux = dx / dist, uy = dy / dist;
-        if (Math.abs(dx) > 3) faceLeft = dx < 0;                 // look toward the player
-        double speed = type.speed * (slowTimer > 0 ? slowMul : 1) * (intangible() ? 1.2 : 1);
+        if (!airborne()) {                                        // up in the air: no AI, just falling and drifting on whatever knockback it has left
+            Player p = w.player;
+            double dx = p.x - x, dy = p.y - y;
+            double dist = Math.max(0.001, Math.hypot(dx, dy));
+            double ux = dx / dist, uy = dy / dist;
+            if (Math.abs(dx) > 3) faceLeft = dx < 0;                 // look toward the player
+            double speed = type.speed * (slowTimer > 0 ? slowMul : 1) * (intangible() ? 1.2 : 1);
 
-        if (type == Type.BOSS) updateBoss(w, dt, p, ux, uy, dist, speed);
-        else if (type == Type.SHOOTER) updateShooter(w, dt, ux, uy, dist, speed);
-        else updateMelee(w, dt, p, ux, uy, dist, speed);
+            if (type == Type.BOSS) updateBoss(w, dt, p, ux, uy, dist, speed);
+            else if (type == Type.SHOOTER) updateShooter(w, dt, ux, uy, dist, speed);
+            else updateMelee(w, dt, p, ux, uy, dist, speed);
+        }
 
         Util.Vec inside = w.level.clamp(x, y, radius);
         x = inside.x();
         y = inside.y();
+    }
+
+    /** Hits the ground after being launched: a little dust, a thump, and a brief stagger before it can act again. */
+    private void land(World w) {
+        state = State.RECOVER;
+        stateTimer = 0.4;
+        w.shake = Math.max(w.shake, 2);
+        w.soundAt(Snd.ENEMY_LAND, x, y);
+        w.effects.add(Effect.particle(x, y - radius * 0.2, 0, 0, 0.3, "fx.puff", -1, 1, 0, 3));
+        for (int i = 0; i < 6; i++) {
+            double a = i * Math.PI * 2 / 6;
+            w.effects.add(Effect.particle(x, y, Math.cos(a) * 60, Math.sin(a) * 28 - 6, 0.3, "fx.spark", -1, 0.04, 40, 2));
+        }
     }
 
     private void updateMelee(World w, double dt, Player p, double ux, double uy, double dist, double speed) {

@@ -400,7 +400,7 @@ final class WorldRenderer {
 
     private void drawEnemy(Graphics2D g, World w, Enemy e) {
         Sprite s = spriteFor(w, e);
-        double x = e.x, fy = e.y + e.radius * 0.85 - hover(w, e);
+        double x = e.x, fy = e.y + e.radius * 0.85 - hover(w, e) - e.z;   // airborne: floats up off its shadow, which stays on the ground
         int sc = Art.SCALE;
         if (e.intangible()) {                                             // shadow mode: a dark see-through silhouette with a violet edge
             float a = 0.6f;
@@ -520,7 +520,7 @@ final class WorldRenderer {
     private void drawDizzy(Graphics2D g, World w, Enemy e) {
         Sprite[] star = Art.frames("fx.star");
         Sprite s = spriteFor(w, e);
-        double top = e.y + e.radius * 0.85 - hover(w, e) - s.ay * Art.SCALE;
+        double top = e.y + e.radius * 0.85 - hover(w, e) - e.z - s.ay * Art.SCALE;
         for (int i = 0; i < 3; i++) {
             double a = w.time * 6 + i * Math.PI * 2 / 3;
             star[(int) (w.time * 8 + i) % star.length].draw(g, e.x + Math.cos(a) * 16, top + 6 + Math.sin(a) * 4, 2, false);
@@ -529,8 +529,8 @@ final class WorldRenderer {
 
     /** The target-lock marker: a plain white ring (dark edge so it reads on any background) around the enemy. */
     private void drawLockOn(Graphics2D g, Enemy e) {
-        double r = e.radius + 12;
-        Ellipse2D ring = new Ellipse2D.Double(e.x - r, e.y - r, r * 2, r * 2);
+        double r = e.radius + 12, ey = e.y - e.z;
+        Ellipse2D ring = new Ellipse2D.Double(e.x - r, ey - r, r * 2, r * 2);
         g.setColor(new Color(0, 0, 0, 170));
         g.setStroke(new BasicStroke(5.5f));
         g.draw(ring);
@@ -542,7 +542,7 @@ final class WorldRenderer {
     private void drawEnemyBar(Graphics2D g, World w, Enemy e) {
         if (e.spawnIn > 0 || e.type == Enemy.Type.BOSS || e.intangible() || e.hp <= 0) return;   // the boss has its own big bar
         Sprite s = spriteFor(w, e);
-        double top = e.y + e.radius * 0.85 - hover(w, e) - s.ay * Art.SCALE;
+        double top = e.y + e.radius * 0.85 - hover(w, e) - e.z - s.ay * Art.SCALE;
         double bw = Math.max(30, e.radius * 2);
         double x = e.x - bw / 2, y = top - 10;
         g.setColor(new Color(20, 20, 22, 210));
