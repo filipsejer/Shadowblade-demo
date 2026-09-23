@@ -19,12 +19,22 @@ final class Level {
     private static final double CORRIDOR_LENGTH = 180;
     private static final double DOOR_WIDTH = 130;
 
-    /** Builds up the list of enemies a room spawns: {@code new Roster().add(GRUNT, 4).add(RUNNER, 2)}. */
+    /**
+     * Builds up the wave (or waves) of enemies a room spawns: {@code new Roster().add(GRUNT, 4).add(RUNNER, 2)}.
+     * {@link #nextWave()} starts a second batch that doesn't spawn until the first is wiped out, for a room that
+     * should feel like it has reinforcements: {@code new Roster().add(GRUNT, 4).nextWave().add(BRUTE, 2)}.
+     */
     static final class Roster {
-        final List<Enemy.Type> types = new ArrayList<>();
+        final List<List<Enemy.Type>> waves = new ArrayList<>(List.of(new ArrayList<>()));
 
         Roster add(Enemy.Type type, int count) {
-            for (int i = 0; i < count; i++) types.add(type);
+            List<Enemy.Type> wave = waves.get(waves.size() - 1);
+            for (int i = 0; i < count; i++) wave.add(type);
+            return this;
+        }
+
+        Roster nextWave() {
+            waves.add(new ArrayList<>());
             return this;
         }
     }
@@ -42,7 +52,10 @@ final class Level {
         final List<Rectangle2D.Double> parts = new ArrayList<>();
         /** The bounding box of every part — not the room's actual shape, just "roughly where it is". Kept in sync as parts are added. */
         Rectangle2D.Double bounds;
-        final List<Enemy.Type> spawns;
+        /** One list of enemy types per wave; a plain single-wave room just has one entry. */
+        final List<List<Enemy.Type>> waves;
+        /** Which wave is currently out (room entry) or about to spawn (once the one before it is wiped out). */
+        int wave;
         State state;
         /** A gated room (the boss room) stays sealed until every other room has been cleared. */
         boolean gated;
@@ -53,9 +66,17 @@ final class Level {
             this.name = name;
             this.parts.add(new Rectangle2D.Double(x, y, w, h));
             recomputeBounds();
-            this.spawns = List.copyOf(roster.types);
-            this.state = spawns.isEmpty() ? State.SAFE : State.UNVISITED;
+            List<List<Enemy.Type>> ws = new ArrayList<>();
+            for (List<Enemy.Type> wv : roster.waves) ws.add(List.copyOf(wv));
+            this.waves = List.copyOf(ws);
+            this.state = currentWave().isEmpty() ? State.SAFE : State.UNVISITED;
         }
+
+        /** The enemies making up the wave that's out right now (or, before the room is entered, the one it opens with). */
+        List<Enemy.Type> currentWave() { return waves.get(wave); }
+
+        /** True once the wave that's out is the last one this room has — there's nothing left to spawn once it's cleared. */
+        boolean onLastWave() { return wave >= waves.size() - 1; }
 
         private void recomputeBounds() {
             Rectangle2D.Double b = new Rectangle2D.Double(parts.get(0).x, parts.get(0).y, parts.get(0).width, parts.get(0).height);
@@ -355,8 +376,10 @@ final class Level {
         // north: a hall, a barracks beyond it, and a side room
         Room outpost = b.attach(hub, Dir.NORTH, "MOSSY TRAIL", 900, 640,
             new Roster().add(Enemy.Type.GRUNT, 3).add(Enemy.Type.RUNNER, 2));
+        // a leaf room at the end of a branch: the first wave clears, then reinforcements spawn in behind you
         b.attach(outpost, Dir.NORTH, "FERN HOLLOW", 1000, 700,
-            new Roster().add(Enemy.Type.GRUNT, 4).add(Enemy.Type.RUNNER, 2).add(Enemy.Type.SHOOTER, 1));
+            new Roster().add(Enemy.Type.GRUNT, 4).add(Enemy.Type.RUNNER, 2).add(Enemy.Type.SHOOTER, 1)
+                .nextWave().add(Enemy.Type.SHOOTER, 2).add(Enemy.Type.RUNNER, 2));
         b.attach(outpost, Dir.EAST, "MUSHROOM GROVE", 800, 600,
             new Roster().add(Enemy.Type.GRUNT, 2).add(Enemy.Type.SHOOTER, 2).add(Enemy.Type.BRUTE, 1));
 
@@ -366,7 +389,8 @@ final class Level {
         Room courtyard = b.attach(gate, Dir.EAST, "SUNLIT GLADE", 1100, 760,
             new Roster().add(Enemy.Type.GRUNT, 3).add(Enemy.Type.RUNNER, 3).add(Enemy.Type.SHOOTER, 2));
         b.attach(courtyard, Dir.NORTH, "OLD SHRINE", 800, 640,
-            new Roster().add(Enemy.Type.BRUTE, 2).add(Enemy.Type.SHOOTER, 2).add(Enemy.Type.GRUNT, 2));
+            new Roster().add(Enemy.Type.BRUTE, 2).add(Enemy.Type.SHOOTER, 2).add(Enemy.Type.GRUNT, 2)
+                .nextWave().add(Enemy.Type.GRUNT, 3).add(Enemy.Type.RUNNER, 2));
 
         // south: a cellar, a crypt, and a vault off the crypt
         Room cellar = b.attach(hub, Dir.SOUTH, "BURROW", 900, 640,
@@ -374,7 +398,8 @@ final class Level {
         Room crypt = b.attach(cellar, Dir.SOUTH, "DEEP WOODS", 1000, 700,
             new Roster().add(Enemy.Type.BRUTE, 2).add(Enemy.Type.GRUNT, 3).add(Enemy.Type.SHOOTER, 2));
         b.attach(crypt, Dir.WEST, "TREASURE GROVE", 900, 640,
-            new Roster().add(Enemy.Type.BRUTE, 2).add(Enemy.Type.SHOOTER, 3).add(Enemy.Type.RUNNER, 3));
+            new Roster().add(Enemy.Type.BRUTE, 2).add(Enemy.Type.SHOOTER, 3).add(Enemy.Type.RUNNER, 3)
+                .nextWave().add(Enemy.Type.BRUTE, 1).add(Enemy.Type.GRUNT, 2));
 
         // west: the boss, sealed until everything else is cleared
         Room boss = b.attach(hub, Dir.WEST, "BOSS ROOM", 1100, 800, new Roster().add(Enemy.Type.BOSS, 1));

@@ -221,7 +221,7 @@ first number in `Snd.java`. Default volumes are in `AudioSettings.java`; the sav
 ## Where to tune things
 
 - **Enemy stats:** the `Type` enum in `Enemy.java`.
-- **Which enemies are in a room:** the `Roster` passed to each room in `Level.levelOne()` / `levelTwo()`.
+- **Which enemies are in a room (and how many waves):** the `Roster` passed to each room in `Level.levelOne()` / `levelTwo()`; chain `.nextWave()` calls onto it for a room with reinforcements.
 - **Room layout:** the `b.attach(...)` calls in `Level.levelOne()` / `levelTwo()`. Each one hangs a room off a side of another room; the corridor between them is made for you, and an overlap check stops you placing rooms on top of each other.
 - **Combo timing and damage:** constants at the top of `Player.java`, plus `startAttack()` / `doHit()`.
 - **Spell numbers:** the arrays at the top of `Spells.java` (damage etc.) and the cost / cooldown in `Ability.java`. Keep the descriptions in `Ability.java` in sync. Melee gives back MP per hit: `mpPerHit` in `Player.java`.
@@ -251,6 +251,11 @@ there is a branch of rooms going north, east and south, and the boss room is to 
 ```
 
 - Walking into an unvisited room spawns its enemies and locks all of its doors (red bars). Kill everything to unlock them.
+- **Some rooms have a second wave:** a `Roster` can be built with `.nextWave()` (e.g. `new Roster().add(GRUNT, 4).nextWave().add(BRUTE, 2)`),
+  which spawns the first batch as normal but only sends in the second once the first is wiped out (after a 1.2s pause,
+  `World.NEXT_WAVE_DELAY`) — the room stays locked and "in combat" the whole time. In level 1 this is the three leaf
+  rooms at the end of a branch (**Fern Hollow**, **Old Shrine**, **Treasure Grove**); every other room is still a
+  single wave.
 - Clearing a room restores 25% HP and 50 MP. Cleared rooms stay empty.
 - **The boss door is sealed** (purple bars, "SEALED") until all 9 other rooms are cleared. The level is cleared when the
   boss dies.

@@ -20,6 +20,9 @@ final class World {
     int stage;                      // which level we're on (0 = the first)
     double fade;                    // 1 -> 0 after travelling to a new level: a black screen fading in
     Level.Room activeRoom;          // the room currently in combat, or null
+    /** Counts down after a wave is wiped out and the room has another one coming; the next wave spawns at 0. */
+    double nextWaveTimer;
+    static final double NEXT_WAVE_DELAY = 1.2;
     Player player;
     final List<Enemy> enemies = new ArrayList<>();
     final List<Projectile> projectiles = new ArrayList<>();
@@ -95,6 +98,7 @@ final class World {
         level = Level.create(stage);
         fade = 0;
         activeRoom = null;
+        nextWaveTimer = 0;
         player = new Player(level.spawnX, level.spawnY);
         markVisited();
         enemies.clear();
@@ -346,7 +350,7 @@ final class World {
         updateBlasts(dt);
         updateZones(dt);
         updateEffects(dt);
-        if (tutorial == null) updateRooms();                     // the tutorial opens and closes its own doors
+        if (tutorial == null) updateRooms(dt);                   // the tutorial opens and closes its own doors
         collectDead();
 
         if (player.hp <= 0) {
@@ -672,13 +676,21 @@ final class World {
 
     // ------------------------------------------------------------------ rooms
 
-    /** Walking into an unvisited room spawns its enemies and locks its doors; killing them all opens the doors again. */
-    private void updateRooms() {
+    /**
+     * Walking into an unvisited room spawns its first wave and locks its doors; killing it either spawns the room's
+     * next wave (a beat later, so the room doesn't feel like it's cheating) or, once the last wave is down, clears
+     * the room and opens the doors again.
+     */
+    private void updateRooms(double dt) {
         if (activeRoom == null) {
             Level.Room room = level.roomAt(player.x, player.y, Level.TRIGGER_INSET);
             if (room != null && room.state == Level.Room.State.UNVISITED) startCombat(room);
+        } else if (nextWaveTimer > 0) {
+            nextWaveTimer -= dt;
+            if (nextWaveTimer <= 0) spawnNextWave();
         } else if (enemies.isEmpty()) {
-            endCombat();
+            if (activeRoom.onLastWave()) endCombat();
+            else nextWaveTimer = NEXT_WAVE_DELAY;
         }
     }
 
@@ -686,11 +698,19 @@ final class World {
         activeRoom = room;
         room.state = Level.Room.State.COMBAT;
         level.refresh();                       // closes the doors
-        for (Enemy.Type type : room.spawns) spawnEnemy(type, room);
+        for (Enemy.Type type : room.currentWave()) spawnEnemy(type, room);
         sound(themed(Snd.LOCK_FOREST, Snd.LOCK_CITY, Snd.LOCK_LAB));
-        if (room.spawns.contains(Enemy.Type.BOSS)) sound(Snd.BOSS_INTRO);
+        if (room.currentWave().contains(Enemy.Type.BOSS)) sound(Snd.BOSS_INTRO);
         banner = room.name;
         bannerTimer = 2.2;
+    }
+
+    private void spawnNextWave() {
+        activeRoom.wave++;
+        for (Enemy.Type type : activeRoom.currentWave()) spawnEnemy(type, activeRoom);
+        sound(themed(Snd.LOCK_FOREST, Snd.LOCK_CITY, Snd.LOCK_LAB));
+        banner = "WAVE " + (activeRoom.wave + 1);
+        bannerTimer = 1.6;
     }
 
     private void endCombat() {
@@ -761,7 +781,10 @@ final class World {
 
     /** Text for the top of the HUD: the room you're in, and how the fight is going. */
     String roomStatus() {
-        if (activeRoom != null) return activeRoom.name + "   -   " + enemies.size() + " left";
+        if (activeRoom != null) {
+            if (enemies.isEmpty() && nextWaveTimer > 0) return activeRoom.name + "   -   more incoming...";
+            return activeRoom.name + "   -   " + enemies.size() + " left";
+        }
         Level.Room room = level.roomAt(player.x, player.y, 0);
         if (room == null) return "";
         return room.state == Level.Room.State.CLEARED ? room.name + "   -   cleared" : room.name;
@@ -813,6 +836,7 @@ final class World {
     /** The part every arrival shares, wherever {@link #level} now points: a clean slate, healed, at the spawn point. */
     private void arrive() {
         activeRoom = null;
+        nextWaveTimer = 0;
         enemies.clear();
         arrivals.clear();
         blasts.clear();
