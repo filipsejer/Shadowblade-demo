@@ -19,6 +19,7 @@ final class Player {
     static final double ROLL_BONUS = 1.45, ROLL_BONUS_2 = 1.9;
     static final double COMBO_WINDOW = 0.45;       // time to press ENTER again to continue a chain
     static final double INPUT_BUFFER = 0.22;
+    static final double LAUNCH_VZ = 560;           // a combo's finishing hit launches enemies into the air by this much (see Enemy.launch)
 
     double x, y;
     double lastX, lastY;                          // where it stood at the start of the frame (to tell which way it is moving)
@@ -300,10 +301,11 @@ final class Player {
             double dmg = base * (0.92 + w.rng.nextDouble() * 0.16);
             double kb = hitFinisher ? 430 : 150;
             e.hurt(w, dmg, Math.cos(ang) * kb, Math.sin(ang) * kb, hitFinisher ? 0.45 : 0.2);
+            if (hitFinisher) e.launch(LAUNCH_VZ);                              // the combo's last hit pops them into the air
             w.soundAt(e.type.armored ? Snd.HIT_ARMOR : hitFinisher ? Snd.HIT_HEAVY : Snd.HIT_LIGHT, e.x, e.y);
-            w.effects.add(Effect.particle(e.x, e.y - e.radius * 0.3, 0, 0, 0.24, "fx.spark", -1, 1, 0, 3));   // impact star
+            w.effects.add(Effect.particle(e.x, e.y - e.radius * 0.3 - e.z, 0, 0, 0.24, "fx.spark", -1, 1, 0, 3));   // impact star
             for (int i = 0; i < 3; i++) {
-                w.effects.add(Effect.spark(e.x, e.y, ang + (w.rng.nextDouble() - 0.5) * 2.4,
+                w.effects.add(Effect.spark(e.x, e.y - e.z, ang + (w.rng.nextDouble() - 0.5) * 2.4,
                     120 + w.rng.nextDouble() * 160, 3, 0.25, Color.WHITE));
             }
             hits++;

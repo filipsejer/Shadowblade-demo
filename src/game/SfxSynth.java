@@ -691,6 +691,13 @@ final class SfxSynth {
                     .noise(BAND, 0, 0.02, 1800, 1800, 1, 0.14, 0.001, 0.006);
                 return x;
             }
+            case ENEMY_LAND -> {                                                 // a soft thump and a puff of dust as a launched enemy hits the ground
+                Sx x = new Sx(0.35, seed);
+                x.tone(SINE, 0, 0.1, 150 * k, 70, 1.0, 0.0006, 0.045).noise(BAND, 0, 0.09, 1500, 950, 1.0, 0.9, 0.0006, 0.04)
+                    .noise(BAND, 0.01, 0.12, 650, 420, 0.7, 0.65, 0.003, 0.05);
+                x.reverb(0.2, 0.5, 0.06);
+                return x;
+            }
             case CITY_HORN -> {
                 Sx x = new Sx(2.2, seed);
                 double f = v == 0 ? 220 : 196;

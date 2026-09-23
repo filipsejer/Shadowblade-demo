@@ -123,7 +123,10 @@ enum Snd {
     BARREL_SMASH(-16, 0.05, 3, 3),
 
     // Transit Town
-    TOWN_TALK(-27, 0.045, 2, 4);
+    TOWN_TALK(-27, 0.045, 2, 4),
+
+    // air combos
+    ENEMY_LAND(-24, 0.06, 3, 2);
 
     final double loudDb, minGap;
     final int voices, variants;

@@ -345,7 +345,7 @@ final class World {
             Enemy a = enemies.get(i);
             for (int j = i + 1; j < n; j++) {
                 Enemy b = enemies.get(j);
-                if (a.intangible() || b.intangible()) continue;
+                if (a.intangible() || b.intangible() || a.airborne() || b.airborne()) continue;   // floating above everything, they don't jostle or get jostled
                 double dx = b.x - a.x, dy = b.y - a.y;
                 double d = Math.hypot(dx, dy);
                 double min = a.radius + b.radius;
@@ -361,7 +361,7 @@ final class World {
         }
         if (!player.dodging() && !player.sliding()) {   // rolling and attack-dashes pass through enemies
             for (Enemy e : enemies) {
-                if (e.intangible()) continue;
+                if (e.intangible() || e.airborne()) continue;
                 double dx = e.x - player.x, dy = e.y - player.y;
                 double d = Math.hypot(dx, dy);
                 double min = e.radius + player.radius;
@@ -379,6 +379,7 @@ final class World {
             Util.Vec out = around(l.x(), l.y() - 12, l.radius(), player.x, player.y, player.radius, player.x - player.lastX, player.y - player.lastY);   // (the trunk's base, as far as a body's centre is concerned)
             if (out != null) { player.x = out.x(); player.y = out.y(); }
             for (Enemy e : enemies) {
+                if (e.airborne()) continue;                        // clear over the top of a tree trunk or a crate while it's up there
                 out = around(l.x(), l.y() - 12, l.radius(), e.x, e.y, e.radius, e.x - e.lastX, e.y - e.lastY);
                 if (out != null) { e.x = out.x(); e.y = out.y(); }
             }
@@ -388,6 +389,7 @@ final class World {
             Util.Vec out = around(c.x, c.y - 8, c.radius, player.x, player.y, player.radius, player.x - player.lastX, player.y - player.lastY);
             if (out != null) { player.x = out.x(); player.y = out.y(); }
             for (Enemy e : enemies) {
+                if (e.airborne()) continue;
                 out = around(c.x, c.y - 8, c.radius, e.x, e.y, e.radius, e.x - e.lastX, e.y - e.lastY);
                 if (out != null) { e.x = out.x(); e.y = out.y(); }
             }
@@ -583,12 +585,13 @@ final class World {
     /** A puff of smoke and a scatter of bits: leaves in the forest, scrap in the city. */
     private void deathBurst(Enemy e) {
         boolean big = e.radius > 20;
-        effects.add(Effect.particle(e.x, e.y - e.radius * 0.3, 0, 0, 0.42, "fx.puff", -1, 1, 0, big ? 5 : 3));
+        double ey = e.y - e.radius * 0.3 - e.z;                    // dying mid-juggle, the burst happens where they actually are
+        effects.add(Effect.particle(e.x, ey, 0, 0, 0.42, "fx.puff", -1, 1, 0, big ? 5 : 3));
         String bits = switch (level.theme) { case FOREST -> "fx.leaf"; case CITY -> "fx.scrap"; case LAB -> "fx.goo"; };
         int n = big ? 12 : 7;
         for (int i = 0; i < n; i++) {
             double a = rng.nextDouble() * Math.PI * 2, sp = 70 + rng.nextDouble() * 170;
-            effects.add(Effect.particle(e.x, e.y - e.radius * 0.3, Math.cos(a) * sp, Math.sin(a) * sp - 60, 0.7 + rng.nextDouble() * 0.4,
+            effects.add(Effect.particle(e.x, ey, Math.cos(a) * sp, Math.sin(a) * sp - 60, 0.7 + rng.nextDouble() * 0.4,
                 bits, rng.nextInt(3), 0.06, -70, 3));
         }
     }
