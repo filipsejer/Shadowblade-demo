@@ -709,8 +709,6 @@ final class World {
         activeRoom.wave++;
         for (Enemy.Type type : activeRoom.currentWave()) spawnEnemy(type, activeRoom);
         sound(themed(Snd.LOCK_FOREST, Snd.LOCK_CITY, Snd.LOCK_LAB));
-        banner = "WAVE " + (activeRoom.wave + 1);
-        bannerTimer = 1.6;
     }
 
     private void endCombat() {
