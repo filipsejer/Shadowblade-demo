@@ -45,6 +45,8 @@ final class Renderer {
     private final Minimap minimap = new Minimap();
     private final WorldRenderer worldRenderer = new WorldRenderer();
     private final RunHud runHud = new RunHud();
+    private final TitleScreen titleScreen = new TitleScreen();
+    private final ArmoryScreen armoryScreen = new ArmoryScreen();
     private BufferedImage vignetteImage;
 
     void render(World w, Graphics2D g, int width, int height) {
@@ -54,13 +56,15 @@ final class Renderer {
         g.fillRect(0, 0, width, height);
 
         AffineTransform screen = g.getTransform();
-        double left = camOrigin(w.camX, width, w.level.width);
-        double top = camOrigin(w.camY, height, w.level.height);
+        double zoom = zoom(w), viewW = width / zoom, viewH = height / zoom;     // the menus' backdrop is shown close up
+        double left = camOrigin(w.camX, viewW, w.level.width);
+        double top = camOrigin(w.camY, viewH, w.level.height);
         double sx = (shakeRng.nextDouble() - 0.5) * 2 * w.shake;
         double sy = (shakeRng.nextDouble() - 0.5) * 2 * w.shake;
         double ox = Math.round(-left + sx), oy = Math.round(-top + sy);   // whole pixels: crisp art, no seams between chunks
+        g.scale(zoom, zoom);
         g.translate(ox, oy);
-        worldRenderer.draw(g, w, new Rectangle2D.Double(-ox, -oy, width, height));
+        worldRenderer.draw(g, w, new Rectangle2D.Double(-ox, -oy, viewW, viewH));
 
         g.setTransform(screen);
         g.drawImage(vignette(width, height), 0, 0, null);
@@ -69,7 +73,7 @@ final class Renderer {
             g.fillRect(0, 0, width, height);
         }
         if (w.tutorial != null && w.state != World.State.TITLE) drawEyelids(g, w.tutorial, width, height);
-        boolean menu = w.state == World.State.TITLE || w.state == World.State.ARMORY;
+        boolean menu = w.state == World.State.TITLE || w.state == World.State.ARMORY || w.titleScene;
         if (w.run != null && w.state != World.State.RUN_END) runHud.drawHud(g, w, width, height);
         else if (!menu && w.state != World.State.RUN_END) drawHud(g, w, width, height);
         if (w.tutorial != null && w.state == World.State.PLAYING) drawDialogue(g, w.tutorial.dialogue, SQUIRREL, width, height);
@@ -83,16 +87,18 @@ final class Renderer {
             g.setColor(new Color(0, 0, 0, (int) (255 * Util.clamp(w.tutorial.blackout(), 0, 1))));
             g.fillRect(0, 0, width, height);
         }
+        boolean backdrop = w.titleScene && (w.state == World.State.CLASSIC || w.state == World.State.CHAPTER_SELECT || w.state == World.State.ARMORY);
+        if (backdrop) titleScreen.drawBackdrop(g, w, width, height);
         switch (w.state) {
-            case TITLE -> runHud.drawMainMenu(g, w, width, height);
-            case CLASSIC -> drawTitle(g, w, width, height);
-            case CHAPTER_SELECT -> drawChapterSelect(g, w, width, height);
+            case TITLE -> titleScreen.draw(g, w, width, height);
+            case CLASSIC -> titleScreen.drawClassic(g, w, width, height);
+            case CHAPTER_SELECT -> titleScreen.drawChapters(g, w, width, height);
             case UPGRADE -> drawStationMenu(g, w, width, height);
             case PAUSE -> { if (w.run != null) runHud.drawRunPause(g, w, width, height); else drawPause(g, w, width, height); }
             case GAME_OVER -> drawGameOver(g, w, width, height);
             case LEVEL_UP -> runHud.drawChoices(g, w, width, height);
             case RUN_END -> runHud.drawRunEnd(g, w, width, height);
-            case ARMORY -> runHud.drawArmory(g, w, width, height);
+            case ARMORY -> armoryScreen.draw(g, w, width, height);
             case PLAYING -> { }
         }
     }
@@ -112,7 +118,19 @@ final class Renderer {
     }
 
     /** Top-left world coordinate of the view; centred on the player but never showing past the arena edge. */
-    private static double camOrigin(double center, int view, double arena) {
+    /** The menus' backdrop is drawn this much closer than play (a whole number, so the pixel art stays crisp). */
+    static final double TITLE_ZOOM = 2;
+
+    static double zoom(World w) { return w.titleScene ? TITLE_ZOOM : 1; }
+
+    /** Where a point in the world lands on screen right now (ignoring screen shake). */
+    static Util.Vec toScreen(World w, double x, double y, int width, int height) {
+        double z = zoom(w);
+        double left = camOrigin(w.camX, width / z, w.level.width), top = camOrigin(w.camY, height / z, w.level.height);
+        return new Util.Vec((x - Math.round(left)) * z, (y - Math.round(top)) * z);
+    }
+
+    private static double camOrigin(double center, double view, double arena) {
         if (view >= arena) return (arena - view) / 2;
         return Util.clamp(center - view / 2.0, 0, arena - view);
     }
@@ -424,65 +442,6 @@ final class Renderer {
     private void dim(Graphics2D g, int width, int height, int alpha) {
         g.setColor(new Color(0, 0, 0, alpha));
         g.fillRect(0, 0, width, height);
-    }
-
-    private void drawTitle(Graphics2D g, World w, int width, int height) {
-        dim(g, width, height, 150);
-        double cx = width / 2.0;
-        g.setFont(f54b);
-        centered(g, "CLASSIC CAMPAIGN", cx, height * 0.2, Color.WHITE);
-        g.setFont(f18b);
-        centered(g, "Clear the rooms. Chain combos. Grow stronger every level.", cx, height * 0.2 + 36, new Color(200, 200, 210));
-
-        String[] items = {"PLAY", "SELECT CHAPTER"};
-        String[] hints = {"the opening story, from the very start" + (w.tutorialOn ? "" : "  (T: currently skipped, straight to LEVEL 1)"),
-            "jump into any level, character level " + World.CHAPTER_SELECT_LEVEL + " and skilled up"};
-        double y0 = height * 0.2 + 90, rowH = 58, gap = 16;
-        for (int i = 0; i < items.length; i++) {
-            menuRow(g, cx, y0 + i * (rowH + gap), 380, rowH, items[i], hints[i], w.menuCursor == i);
-        }
-
-        g.setFont(f14);
-        double y = y0 + items.length * (rowH + gap) + 30;
-        centered(g, "WASD move   SPACE roll   ENTER attack / confirm   TAB lock-on   E talk   ESC pause   M mute",
-            cx, y, new Color(190, 190, 200));
-        g.setFont(f26b);
-        centered(g, "W / S choose      ENTER confirm      ESC main menu", cx, y + 36, Util.alpha(Color.WHITE, 0.6 + 0.4 * Math.sin(System.nanoTime() / 3.0e8)));
-    }
-
-    /** One row of a keyboard menu: a highlighted pill with a title and a small hint line beneath it. */
-    private void menuRow(Graphics2D g, double cx, double y, double w, double h, String title, String hint, boolean selected) {
-        RoundRectangle2D row = new RoundRectangle2D.Double(cx - w / 2, y, w, h, 14, 14);
-        g.setColor(selected ? new Color(52, 66, 104, 240) : new Color(24, 24, 30, 220));
-        g.fill(row);
-        g.setColor(selected ? Color.WHITE : new Color(95, 100, 125));
-        g.setStroke(new BasicStroke(selected ? 3f : 1.8f));
-        g.draw(row);
-        g.setFont(f26b);
-        centered(g, title, cx, y + 30, selected ? new Color(255, 225, 120) : new Color(200, 205, 220));
-        g.setFont(f12);
-        centered(g, hint, cx, y + 48, selected ? new Color(220, 220, 230) : new Color(140, 140, 150));
-    }
-
-    /** The Select Chapter screen: one row per level, each starting the character at {@link World#CHAPTER_SELECT_LEVEL}. */
-    private void drawChapterSelect(Graphics2D g, World w, int width, int height) {
-        dim(g, width, height, 170);
-        double cx = width / 2.0;
-        g.setFont(f54b);
-        centered(g, "SELECT CHAPTER", cx, height * 0.16, Color.WHITE);
-        g.setFont(f14);
-        centered(g, "Starts in that level's hub, character level " + World.CHAPTER_SELECT_LEVEL + ", skill points ready to spend.",
-            cx, height * 0.16 + 30, new Color(200, 200, 210));
-
-        double rowW = 520, rowH = 66, gap = 16, y0 = height * 0.16 + 70;
-        for (int i = 0; i < Level.COUNT; i++) {
-            String title = "LEVEL " + (i + 1) + "   -   " + Level.BOSS_NAMES[i];
-            menuRow(g, cx, y0 + i * (rowH + gap), rowW, rowH, title, Level.THEMES[i].title, w.chapterCursor == i);
-        }
-        menuRow(g, cx, y0 + Level.COUNT * (rowH + gap), rowW, rowH, "PROTOTYPE", "a hand-sketched layout being tried out - no enemies",
-            w.chapterCursor == Level.COUNT);
-        g.setFont(f14);
-        centered(g, "W / S choose      ENTER start      ESC back", cx, y0 + (Level.COUNT + 1) * (rowH + gap) + 24, new Color(200, 200, 200));
     }
 
     /** A trainer's menu: their upgrades on the left, the selected one's details on the right. */

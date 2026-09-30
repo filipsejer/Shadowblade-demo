@@ -124,6 +124,7 @@ final class WorldRenderer {
         for (Effect e : w.effects) e.render(g);
         Enemy lock = w.lockedTarget();
         if (lock != null) drawLockOn(g, lock);
+        if (w.titleScene) return;                                             // the menus' backdrop: just the scene, no combat furniture
         for (Enemy e : w.enemies) drawEnemyBar(g, w, e);
         for (Enemy e : w.enemies) if (e.stun > 0.05 && e.spawnIn <= 0 && !e.type.armored && e.hp > 0 && !e.shielded) drawDizzy(g, w, e);
         if (tut == null || tut.showMenu()) drawComboDots(g, p);

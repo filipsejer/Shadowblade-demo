@@ -111,12 +111,14 @@ final class World {
     World(boolean withTutorial) {
         tutorialOn = withTutorial;
         profile = Profile.load(Profile.file());
-        reset();
+        showTitle();
+        fade = 1.6;                                   // the very first screen fades in from black
     }
 
     void reset() {
         stage = 0;
         run = null;
+        titleScene = false;
         confirmNew = confirmAbandon = confirmSalvage = false;
         savedRun = Run.describeSaved();
         tutorial = null;
@@ -193,18 +195,18 @@ final class World {
         fade = Math.max(0, fade - dt / 0.9);
         if (in.pressed(KeyEvent.VK_M)) audio.toggleMute();
         switch (state) {
-            case TITLE -> updateMainMenu(in);
-            case CLASSIC -> updateTitle(in);
-            case CHAPTER_SELECT -> updateChapterSelect(in);
+            case TITLE -> { animateTitleScene(dt); updateMainMenu(in); }
+            case CLASSIC -> { animateTitleScene(dt); updateTitle(in); }
+            case CHAPTER_SELECT -> { animateTitleScene(dt); updateChapterSelect(in); }
             case PLAYING -> updatePlaying(dt, in);
             case UPGRADE -> updateStation(in);
             case PAUSE -> { if (run != null) updateRunPause(in); else updatePause(in); }
             case LEVEL_UP -> run.updateChoices(this, in, dt);
-            case ARMORY -> updateArmory(in);
+            case ARMORY -> { animateTitleScene(dt); updateArmory(in); }
             case RUN_END -> {
                 updateEffects(dt);
                 if (in.pressed(KeyEvent.VK_ENTER) || in.pressed(KeyEvent.VK_ESCAPE) || in.pressed(KeyEvent.VK_SPACE)) {
-                    reset();
+                    showTitle();
                     sound(Snd.MENU_BACK);
                 }
             }
@@ -310,6 +312,59 @@ final class World {
         }
     }
 
+    /** True while the menus' backdrop is up: the hero in a forest clearing with the horde circling (see {@link #showTitle}). */
+    boolean titleScene;
+    /** Each circling monster's orbit: start angle, radius, and speed (radians per second; negative goes the other way). */
+    private final List<double[]> orbits = new ArrayList<>();
+
+    /**
+     * Back to the main menu, with its backdrop: the hero standing alone in a forest clearing at dusk while monsters
+     * prowl round in slow circles. Nothing here fights; {@link #animateTitleScene} just walks them round.
+     */
+    void showTitle() {
+        reset();
+        titleScene = true;
+        level = Level.arena(0);
+        player = new Player(level.spawnX, level.spawnY);
+        player.facing = Math.PI / 2;                                  // facing the camera
+        Random r = new Random(11);
+        Enemy.Type[] kinds = {Enemy.Type.GRUNT, Enemy.Type.RUNNER, Enemy.Type.GRUNT, Enemy.Type.SHOOTER, Enemy.Type.GRUNT,
+            Enemy.Type.RUNNER, Enemy.Type.BRUTE, Enemy.Type.GRUNT, Enemy.Type.RUNNER, Enemy.Type.GRUNT, Enemy.Type.SHOOTER, Enemy.Type.GRUNT};
+        orbits.clear();
+        for (int i = 0; i < kinds.length; i++) {
+            boolean inner = i % 2 == 0;
+            double a = i * Math.PI * 2 / kinds.length + r.nextDouble() * 0.3;
+            double radius = (inner ? 165 : 235) + r.nextDouble() * 25;
+            double speed = (inner ? 0.16 : -0.11) * (0.85 + r.nextDouble() * 0.3);
+            Enemy e = new Enemy(kinds[i], player.x, player.y, 1, 1, r);
+            e.spawnIn = 0;
+            enemies.add(e);
+            orbits.add(new double[]{a, radius, speed});
+        }
+        animateTitleScene(0);
+        focusX = player.x - 150;                                      // the hero stands right of centre, clear of the menu
+        focusY = player.y - 12;
+        camX = focusX;
+        camY = focusY;
+        state = State.TITLE;
+    }
+
+    /** Walks the backdrop's monsters round their circles (and keeps the clock running so everything animates). */
+    private void animateTitleScene(double dt) {
+        if (!titleScene) return;
+        time += dt;
+        for (int i = 0; i < enemies.size() && i < orbits.size(); i++) {
+            Enemy e = enemies.get(i);
+            double[] o = orbits.get(i);
+            double a = o[0] + time * o[2];
+            double nx = player.x + Math.cos(a) * o[1], ny = player.y + Math.sin(a) * o[1] * 0.62;
+            if (Math.abs(nx - e.x) > 0.01) e.faceLeft = nx < e.x;
+            e.x = nx;
+            e.y = ny;
+            e.state = Enemy.State.CHASE;
+        }
+    }
+
     /** A brand-new roguelike run: stage 1, level 1, only the sword. Throws away any saved run. */
     void beginRun() {
         Run.delete(Run.file());
@@ -324,7 +379,7 @@ final class World {
         reset();
         Run loaded = Run.load(this);
         if (loaded == null) {
-            reset();
+            showTitle();
             sound(Snd.MENU_DENY);
             return;
         }
@@ -375,7 +430,7 @@ final class World {
             case 0 -> { state = State.PLAYING; sound(Snd.PAUSE_OUT); }
             case 3 -> {
                 run.save(this, Run.file());
-                reset();
+                showTitle();
                 sound(Snd.MENU_SELECT);
             }
             case 4 -> {

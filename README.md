@@ -108,7 +108,19 @@ The game opens on the main menu (**W / S** to choose, **Enter** to confirm):
 - **Classic Campaign** opens the original adventure's own menu, described next. **Esc** comes back.
 - **Quit** closes the game.
 
-Built in `World.updateMainMenu` and drawn in `RunHud.drawMainMenu`.
+The menu sits over a live backdrop (`World.showTitle` / `World.animateTitleScene`): the hero standing in a forest
+clearing at dusk, shown close up at 2x, while monsters prowl round them in slow circles. `TitleScreen` grades it to dusk
+with a pool of warm light on the hero and fireflies drifting up. On the darkened left side it draws the gold-lettered
+logo (a glint sweeps across it every few seconds), the menu (the selection glides from row to row, and a line
+underneath says what the selected row does), and key hints. A card in the corner shows your gold, what you're wearing,
+and your record. The logo uses the first of Cinzel, Trajan Pro, Palatino, Palatino Linotype, Book Antiqua or Georgia
+that's installed. Input is handled in `World.updateMainMenu`.
+
+The Classic Campaign's menu, its chapter list and the Armory share the same backdrop and the same look (`MenuStyle`:
+gold serif headings, gliding selection, key caps, dark glass cards). The Classic menu has a card showing the
+campaign's own controls, since they differ from a run's. The chapter list shows the selected level's boss in its corner
+card. The Armory is three cards: what you're wearing and its total bonuses, your bag, and the selected item with what
+Enter / U / X would do to it.
 
 The Classic Campaign's menu has two rows:
 
@@ -193,7 +205,10 @@ however the run ends**, and the gold you picked up.
 | `Arsenal.java` | The run's self-firing skills and their numbers per rank |
 | `Pickup.java` | Gems, gold, hearts, magnets, bombs, chests and the portal |
 | `Item.java` / `Profile.java` | Equipment (slots, rarities, stats, legendaries) and the persistent profile (gold, bag, what's worn, records) |
-| `RunHud.java` | The main menu, a run's HUD, the level-up cards, a run's pause menu, the results screen, the Armory, and the perk icons |
+| `TitleScreen.java` | The main menu and the Classic Campaign's menu and chapter list: the backdrop's dusk lighting and fireflies, the logo, the rows and the corner cards |
+| `ArmoryScreen.java` | The Armory screen |
+| `MenuStyle.java` | The look those menus share: gold headings, gliding selection rows, key caps, glass cards, the serif font |
+| `RunHud.java` | A run's HUD, the level-up cards, a run's pause menu, the results screen, the Armory, and the perk icons |
 | `RunArt.java` | Sprites for gems, coins, crate pickups, chests, the portal, the orbiting sword and the equipment icons |
 | `Level.java` | The maps: rooms (each one or more glued-together rectangles — see **Room shapes** below), corridors (doors), the trainers, the guide's spot, the sealed boss door, and walkable-area collision. `Level.create(n)` builds level n (`levelOne()`, `levelTwo()`), `Level.tutorial()` the opening story's map, `Level.town()` Transit Town |
 | `Tutorial.java` / `Dialogue.java` | The opening story: the script (each lesson is a scene with the squirrel) and the speech box's rules (typewriter text, lines that wait for a key or are called out, the voice's chirps); `Dialogue` is reused as-is for Transit Town's locals |
