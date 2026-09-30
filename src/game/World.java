@@ -11,7 +11,12 @@ import java.util.Random;
 
 /** All game state and rules. No drawing here (see {@link Renderer}) and no window, so it can run headless. */
 final class World {
-    enum State { TITLE, CHAPTER_SELECT, PLAYING, UPGRADE, PAUSE, GAME_OVER }
+    /**
+     * TITLE is the main menu (new roguelike run, continue a saved one, the Armory, the classic campaign). CLASSIC is the
+     * campaign's own start screen (the opening story, or Select Chapter). LEVEL_UP is a run's choice of perks, RUN_END
+     * its results, ARMORY the equipment screen.
+     */
+    enum State { TITLE, CLASSIC, CHAPTER_SELECT, PLAYING, UPGRADE, PAUSE, GAME_OVER, LEVEL_UP, RUN_END, ARMORY }
 
     final Random rng = new Random();
 
@@ -39,6 +44,23 @@ final class World {
     AudioSettings audio = new AudioSettings();
     int pauseCursor;                // which sound setting is selected on the pause screen
     private boolean sealedNear;     // standing next to the sealed boss door
+
+    /** The roguelike run in progress, or null (the menus, and the classic campaign). */
+    Run run;
+    /** Gold, items and records that outlast runs. Loaded once, saved whenever it changes. */
+    Profile profile = new Profile();
+    /** Set by QUIT on the main menu; the window closes itself when it sees it. */
+    boolean quitRequested;
+    /** The main menu's saved-run line ("Stage 2 - Lv 14 - 3:12"), or null when there's no run to continue. */
+    String savedRun;
+    /** NEW GAME pressed once over an existing save: the next press confirms throwing it away. */
+    boolean confirmNew;
+    /** The Armory: which row of the bag is selected, a line of feedback, and a salvage waiting for its confirming press. */
+    int armoryCursor;
+    String armoryMessage = "";
+    boolean confirmSalvage;
+    /** A run's pause menu: an abandon waiting for its confirming press. */
+    boolean confirmAbandon;
 
     Enemy lockTarget;
     double camX, camY;
@@ -88,11 +110,15 @@ final class World {
     /** {@code withTutorial}: ENTER on the title screen starts with the tutorial (the player can switch it off with T). */
     World(boolean withTutorial) {
         tutorialOn = withTutorial;
+        profile = Profile.load(Profile.file());
         reset();
     }
 
     void reset() {
         stage = 0;
+        run = null;
+        confirmNew = confirmAbandon = confirmSalvage = false;
+        savedRun = Run.describeSaved();
         tutorial = null;
         focusX = focusY = Double.NaN;
         level = Level.create(stage);
@@ -167,11 +193,21 @@ final class World {
         fade = Math.max(0, fade - dt / 0.9);
         if (in.pressed(KeyEvent.VK_M)) audio.toggleMute();
         switch (state) {
-            case TITLE -> updateTitle(in);
+            case TITLE -> updateMainMenu(in);
+            case CLASSIC -> updateTitle(in);
             case CHAPTER_SELECT -> updateChapterSelect(in);
             case PLAYING -> updatePlaying(dt, in);
             case UPGRADE -> updateStation(in);
-            case PAUSE -> updatePause(in);
+            case PAUSE -> { if (run != null) updateRunPause(in); else updatePause(in); }
+            case LEVEL_UP -> run.updateChoices(this, in, dt);
+            case ARMORY -> updateArmory(in);
+            case RUN_END -> {
+                updateEffects(dt);
+                if (in.pressed(KeyEvent.VK_ENTER) || in.pressed(KeyEvent.VK_ESCAPE) || in.pressed(KeyEvent.VK_SPACE)) {
+                    reset();
+                    sound(Snd.MENU_BACK);
+                }
+            }
             case GAME_OVER -> {
                 updateEffects(dt);
                 if (in.pressed(KeyEvent.VK_R) || in.pressed(KeyEvent.VK_ENTER)) {
@@ -189,6 +225,11 @@ final class World {
 
     /** W/S (or the arrows) move between PLAY and SELECT CHAPTER; ENTER/SPACE picks the one that's lit up. T still toggles the opening story for PLAY. */
     private void updateTitle(Input in) {
+        if (in.pressed(KeyEvent.VK_ESCAPE)) {
+            state = State.TITLE;
+            sound(Snd.MENU_BACK);
+            return;
+        }
         if (in.pressed(KeyEvent.VK_T)) {
             tutorialOn = !tutorialOn;
             sound(Snd.MENU_MOVE);
@@ -213,7 +254,7 @@ final class World {
     /** W/S choose a level, ENTER starts it (character level {@value #CHAPTER_SELECT_LEVEL}, skill points unspent), ESC goes back. */
     private void updateChapterSelect(Input in) {
         if (in.pressed(KeyEvent.VK_ESCAPE)) {
-            state = State.TITLE;
+            state = State.CLASSIC;
             sound(Snd.MENU_BACK);
             return;
         }
@@ -224,6 +265,168 @@ final class World {
         if (in.pressed(KeyEvent.VK_ENTER) || in.pressed(KeyEvent.VK_E)) {
             if (chapterCursor == Level.COUNT) beginPrototype();
             else beginChapter(chapterCursor);
+        }
+    }
+
+    // ------------------------------------------------------------------ the main menu and roguelike runs
+
+    /** The main menu's rows, top to bottom. */
+    static final String[] MAIN_MENU = {"NEW GAME", "CONTINUE", "ARMORY", "CLASSIC CAMPAIGN", "QUIT"};
+
+    /** W/S choose, ENTER picks. NEW GAME over an existing save asks for a second press first. */
+    private void updateMainMenu(Input in) {
+        int rows = MAIN_MENU.length;
+        if (in.pressed(KeyEvent.VK_DOWN) || in.pressed(KeyEvent.VK_S)) { menuCursor = (menuCursor + 1) % rows; confirmNew = false; sound(Snd.MENU_MOVE); }
+        if (in.pressed(KeyEvent.VK_UP) || in.pressed(KeyEvent.VK_W)) { menuCursor = (menuCursor + rows - 1) % rows; confirmNew = false; sound(Snd.MENU_MOVE); }
+        if (in.pressed(KeyEvent.VK_ESCAPE)) confirmNew = false;
+        if (!(in.pressed(KeyEvent.VK_ENTER) || in.pressed(KeyEvent.VK_SPACE))) return;
+        in.consume(KeyEvent.VK_ENTER, KeyEvent.VK_SPACE);
+        switch (menuCursor) {
+            case 0 -> {
+                if (savedRun != null && !confirmNew) {
+                    confirmNew = true;
+                    sound(Snd.MENU_DENY);
+                } else {
+                    beginRun();
+                }
+            }
+            case 1 -> {
+                if (savedRun == null) sound(Snd.MENU_DENY);
+                else continueRun();
+            }
+            case 2 -> {
+                armoryCursor = 0;
+                armoryMessage = "";
+                confirmSalvage = false;
+                state = State.ARMORY;
+                sound(Snd.MENU_OPEN);
+            }
+            case 3 -> {
+                state = State.CLASSIC;
+                menuCursor = 0;
+                sound(Snd.MENU_OPEN);
+            }
+            default -> quitRequested = true;
+        }
+    }
+
+    /** A brand-new roguelike run: stage 1, level 1, only the sword. Throws away any saved run. */
+    void beginRun() {
+        Run.delete(Run.file());
+        reset();
+        run = Run.start(this, profile);
+        sound(Snd.TITLE_START);
+        state = State.PLAYING;
+    }
+
+    /** Picks up the saved run where it was left. */
+    void continueRun() {
+        reset();
+        Run loaded = Run.load(this);
+        if (loaded == null) {
+            reset();
+            sound(Snd.MENU_DENY);
+            return;
+        }
+        run = loaded;
+        sound(Snd.TITLE_START);
+        state = State.PLAYING;
+    }
+
+    /** Saves a run in progress (closing the window mid-run, say) so CONTINUE can pick it up. */
+    void saveRunIfAny() {
+        if (run != null && !run.over && (state == State.PLAYING || state == State.PAUSE || state == State.LEVEL_UP)) run.save(this, Run.file());
+    }
+
+    /** Wipes the arena clean between stages. */
+    void clearField() {
+        activeRoom = null;
+        nextWaveTimer = 0;
+        enemies.clear();
+        arrivals.clear();
+        blasts.clear();
+        projectiles.clear();
+        zones.clear();
+        effects.clear();
+        lockTarget = null;
+        markVisited();
+    }
+
+    /** A run's pause menu rows. */
+    static final String[] RUN_PAUSE = {"RESUME", "MUSIC", "EFFECTS", "SAVE & QUIT", "ABANDON RUN"};
+
+    /** W/S choose; LEFT/RIGHT change a volume; ENTER resumes, saves and quits, or (pressed twice) abandons the run. */
+    private void updateRunPause(Input in) {
+        int rows = RUN_PAUSE.length;
+        if (in.pressed(KeyEvent.VK_ESCAPE)) {
+            state = State.PLAYING;
+            confirmAbandon = false;
+            sound(Snd.PAUSE_OUT);
+            return;
+        }
+        if (in.pressed(KeyEvent.VK_DOWN) || in.pressed(KeyEvent.VK_S)) { pauseCursor = (pauseCursor + 1) % rows; confirmAbandon = false; sound(Snd.MENU_MOVE); }
+        if (in.pressed(KeyEvent.VK_UP) || in.pressed(KeyEvent.VK_W)) { pauseCursor = (pauseCursor + rows - 1) % rows; confirmAbandon = false; sound(Snd.MENU_MOVE); }
+        int delta = (in.pressed(KeyEvent.VK_RIGHT) || in.pressed(KeyEvent.VK_D) ? 1 : 0) - (in.pressed(KeyEvent.VK_LEFT) || in.pressed(KeyEvent.VK_A) ? 1 : 0);
+        if (delta != 0 && pauseCursor == 1 && audio.adjustMusic(delta)) sound(Snd.MENU_MOVE);
+        if (delta != 0 && pauseCursor == 2 && audio.adjustSfx(delta)) sound(Snd.MENU_MOVE);
+        if (!in.pressed(KeyEvent.VK_ENTER)) return;
+        in.consume(KeyEvent.VK_ENTER);
+        switch (pauseCursor) {
+            case 0 -> { state = State.PLAYING; sound(Snd.PAUSE_OUT); }
+            case 3 -> {
+                run.save(this, Run.file());
+                reset();
+                sound(Snd.MENU_SELECT);
+            }
+            case 4 -> {
+                if (!confirmAbandon) { confirmAbandon = true; sound(Snd.MENU_DENY); }
+                else run.finish(this, false);
+            }
+            default -> { }
+        }
+    }
+
+    /** The Armory: W/S choose an item, ENTER wears (or takes off) it, U upgrades it with gold, X (twice) salvages it, ESC leaves. */
+    private void updateArmory(Input in) {
+        List<Item> bag = profile.sorted();
+        if (in.pressed(KeyEvent.VK_ESCAPE)) {
+            profile.save(Profile.file());
+            state = State.TITLE;
+            sound(Snd.MENU_BACK);
+            return;
+        }
+        if (bag.isEmpty()) return;
+        int rows = bag.size();
+        armoryCursor = Math.min(armoryCursor, rows - 1);
+        if (in.pressed(KeyEvent.VK_DOWN) || in.pressed(KeyEvent.VK_S)) { armoryCursor = (armoryCursor + 1) % rows; confirmSalvage = false; sound(Snd.MENU_MOVE); }
+        if (in.pressed(KeyEvent.VK_UP) || in.pressed(KeyEvent.VK_W)) { armoryCursor = (armoryCursor + rows - 1) % rows; confirmSalvage = false; sound(Snd.MENU_MOVE); }
+        Item it = bag.get(armoryCursor);
+        if (in.pressed(KeyEvent.VK_ENTER) || in.pressed(KeyEvent.VK_E)) {
+            boolean was = profile.isEquipped(it);
+            profile.toggleEquip(it);
+            armoryMessage = (was ? "Took off " : "Equipped ") + it.name + ".";
+            sound(Snd.MENU_SELECT);
+            armoryCursor = profile.sorted().indexOf(it);
+            profile.save(Profile.file());
+        }
+        if (in.pressed(KeyEvent.VK_U)) {
+            if (it.upgrade >= Item.MAX_UPGRADE) { armoryMessage = it.name + " is fully upgraded."; sound(Snd.MENU_DENY); }
+            else if (!profile.upgrade(it)) { armoryMessage = "Not enough gold: the next upgrade costs " + it.upgradeCost() + "."; sound(Snd.MENU_DENY); }
+            else { armoryMessage = it.name + " upgraded to +" + it.upgrade + "."; sound(Snd.LEVEL_UP); profile.save(Profile.file()); }
+        }
+        if (in.pressed(KeyEvent.VK_X)) {
+            if (!confirmSalvage) {
+                confirmSalvage = true;
+                armoryMessage = "Press X again to salvage " + it.name + " for " + it.salvageValue() + " gold.";
+                sound(Snd.MENU_DENY);
+            } else {
+                confirmSalvage = false;
+                profile.salvage(it);
+                armoryMessage = "Salvaged " + it.name + " for " + it.salvageValue() + " gold.";
+                sound(Snd.COIN_PICKUP);
+                armoryCursor = Math.max(0, Math.min(armoryCursor, profile.items.size() - 1));
+                profile.save(Profile.file());
+            }
         }
     }
 
@@ -278,6 +481,8 @@ final class World {
     private void updatePlaying(double dt, Input in) {
         if (in.pressed(KeyEvent.VK_ESCAPE)) {
             state = State.PAUSE;
+            pauseCursor = 0;
+            confirmAbandon = false;
             sound(Snd.PAUSE_IN);
             return;
         }
@@ -350,9 +555,22 @@ final class World {
         updateBlasts(dt);
         updateZones(dt);
         updateEffects(dt);
-        if (tutorial == null) updateRooms(dt);                   // the tutorial opens and closes its own doors
+        if (tutorial == null && run == null) updateRooms(dt);   // the tutorial opens and closes its own doors; a run has no rooms
         collectDead();
+        if (run != null) {
+            run.update(this, dt);
+            if (state != State.PLAYING) return;                  // the run ended (the last portal)
+        }
 
+        if (player.hp <= 0 && run != null && run.tryRevive(this)) return;
+        if (player.hp <= 0 && run != null) {
+            for (int i = 0; i < 24; i++) {
+                effects.add(Effect.spark(player.x, player.y, rng.nextDouble() * Math.PI * 2, 80 + rng.nextDouble() * 260, 4, 0.8, Player.COLOR));
+            }
+            run.finish(this, false);
+            return;
+        }
+        if (run != null) run.maybeOpenChoices(this);
         if (player.hp <= 0) {
             state = State.GAME_OVER;
             sound(Snd.GAME_OVER);
@@ -439,6 +657,7 @@ final class World {
         Util.Vec v = level.clamp(player.x, player.y, player.radius);
         player.x = v.x();
         player.y = v.y();
+        if (run != null) run.confine(this);                        // a boss fight's ring
     }
 
     /**
@@ -487,8 +706,12 @@ final class World {
             double a = rng.nextDouble() * Math.PI * 2, sp = 80 + rng.nextDouble() * 170;
             effects.add(Effect.particle(b.x, b.y - 14, Math.cos(a) * sp, Math.sin(a) * sp - 90, 0.6 + rng.nextDouble() * 0.4, bits, rng.nextInt(3), 0.05, -110, 3));
         }
-        effects.add(Effect.text(b.x, b.y - 46, "+" + b.xp + " XP", new Color(255, 225, 110), false));
         shake = Math.max(shake, 2);
+        if (run != null) {                                          // in a run, crates hold pickups instead of XP
+            run.onSmash(this, b);
+            return;
+        }
+        effects.add(Effect.text(b.x, b.y - 46, "+" + b.xp + " XP", new Color(255, 225, 110), false));
         gainXp(b.xp);
     }
 
@@ -506,7 +729,19 @@ final class World {
             boolean outside = !level.contains(p.x, p.y);   // hit a wall
             boolean remove = false;
 
-            if (p.friendly) {
+            if (p.friendly && p.wave) {                                // a run's Crescent Wave: cuts through enemies instead of exploding
+                double ang = Math.atan2(p.vy, p.vx);
+                for (Enemy e : enemies) {
+                    if (!e.targetable() || p.struck.contains(e)) continue;
+                    if (Util.dist(p.x, p.y, e.x, e.y - e.z) > p.radius + e.radius) continue;
+                    p.struck.add(e);
+                    e.hurt(this, p.damage * (0.92 + rng.nextDouble() * 0.16), Math.cos(ang) * 150, Math.sin(ang) * 150, 0.15, WAVE_TEXT, false, false);
+                    soundAt(Snd.HIT_LIGHT, e.x, e.y, 0, 0.6, 1.2);
+                    if (p.struck.size() >= p.pierce) { remove = true; break; }
+                }
+                smashNear(p.x, p.y, p.radius * 0.5);
+                if (outside || p.life <= 0) remove = true;
+            } else if (p.friendly) {
                 if (rng.nextInt(2) == 0) {
                     effects.add(Effect.spark(p.x, p.y, rng.nextDouble() * Math.PI * 2, 30, 4, 0.25, new Color(255, 190, 60)));
                 }
@@ -527,6 +762,8 @@ final class World {
             if (remove) it.remove();
         }
     }
+
+    private static final Color WAVE_TEXT = new Color(190, 220, 255);
 
     private void explode(Projectile p) {
         Color c = Ability.FIREBALL.color;
@@ -603,7 +840,8 @@ final class World {
             kills++;
             deathSound(e);
             deathBurst(e);
-            gainXp(e.summoned || e.noXp ? 0 : e.type.xp);
+            if (run != null) run.onKill(this, e);                  // a run drops gems to pick up instead
+            else gainXp(e.summoned || e.noXp ? 0 : e.type.xp);
             if (e.type == Enemy.Type.BOSS) {
                 for (Enemy o : enemies) if (o.summoned) o.hp = 0;                                  // his creations collapse with him
                 blasts.clear();
@@ -646,6 +884,10 @@ final class World {
     }
 
     private void gainXp(int amount) {
+        if (run != null) {
+            run.addXp(this, amount);
+            return;
+        }
         player.xp += amount;
         double rollBefore = player.rollDistanceMult();
         int levels = 0;

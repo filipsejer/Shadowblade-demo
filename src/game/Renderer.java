@@ -44,6 +44,7 @@ final class Renderer {
     private final Random shakeRng = new Random();
     private final Minimap minimap = new Minimap();
     private final WorldRenderer worldRenderer = new WorldRenderer();
+    private final RunHud runHud = new RunHud();
     private BufferedImage vignetteImage;
 
     void render(World w, Graphics2D g, int width, int height) {
@@ -68,7 +69,9 @@ final class Renderer {
             g.fillRect(0, 0, width, height);
         }
         if (w.tutorial != null && w.state != World.State.TITLE) drawEyelids(g, w.tutorial, width, height);
-        drawHud(g, w, width, height);
+        boolean menu = w.state == World.State.TITLE || w.state == World.State.ARMORY;
+        if (w.run != null && w.state != World.State.RUN_END) runHud.drawHud(g, w, width, height);
+        else if (!menu && w.state != World.State.RUN_END) drawHud(g, w, width, height);
         if (w.tutorial != null && w.state == World.State.PLAYING) drawDialogue(g, w.tutorial.dialogue, SQUIRREL, width, height);
         else if (w.dialogue.active() && w.state == World.State.PLAYING) drawDialogue(g, w.dialogue, TOWNSFOLK, width, height);
         if (w.audio.muted) {
@@ -81,11 +84,15 @@ final class Renderer {
             g.fillRect(0, 0, width, height);
         }
         switch (w.state) {
-            case TITLE -> drawTitle(g, w, width, height);
+            case TITLE -> runHud.drawMainMenu(g, w, width, height);
+            case CLASSIC -> drawTitle(g, w, width, height);
             case CHAPTER_SELECT -> drawChapterSelect(g, w, width, height);
             case UPGRADE -> drawStationMenu(g, w, width, height);
-            case PAUSE -> drawPause(g, w, width, height);
+            case PAUSE -> { if (w.run != null) runHud.drawRunPause(g, w, width, height); else drawPause(g, w, width, height); }
             case GAME_OVER -> drawGameOver(g, w, width, height);
+            case LEVEL_UP -> runHud.drawChoices(g, w, width, height);
+            case RUN_END -> runHud.drawRunEnd(g, w, width, height);
+            case ARMORY -> runHud.drawArmory(g, w, width, height);
             case PLAYING -> { }
         }
     }
@@ -184,7 +191,7 @@ final class Renderer {
             g.setFont(f14);
             if (!w.noticeHint.isEmpty()) centered(g, w.noticeHint, width / 2.0, height - 126, Util.alpha(Color.WHITE, fade));
         }
-        if (w.bannerTimer > 0 && w.state != World.State.TITLE && w.state != World.State.CHAPTER_SELECT) {
+        if (w.bannerTimer > 0 && w.state != World.State.CLASSIC && w.state != World.State.CHAPTER_SELECT) {
             g.setFont(f54b);
             centered(g, w.banner, width / 2.0, height * 0.3, Util.alpha(Color.WHITE, Math.min(1, w.bannerTimer)));
         }
@@ -423,7 +430,7 @@ final class Renderer {
         dim(g, width, height, 150);
         double cx = width / 2.0;
         g.setFont(f54b);
-        centered(g, "SPELLBLADE", cx, height * 0.2, Color.WHITE);
+        centered(g, "CLASSIC CAMPAIGN", cx, height * 0.2, Color.WHITE);
         g.setFont(f18b);
         centered(g, "Clear the rooms. Chain combos. Grow stronger every level.", cx, height * 0.2 + 36, new Color(200, 200, 210));
 
@@ -440,7 +447,7 @@ final class Renderer {
         centered(g, "WASD move   SPACE roll   ENTER attack / confirm   TAB lock-on   E talk   ESC pause   M mute",
             cx, y, new Color(190, 190, 200));
         g.setFont(f26b);
-        centered(g, "W / S choose      ENTER confirm", cx, y + 36, Util.alpha(Color.WHITE, 0.6 + 0.4 * Math.sin(System.nanoTime() / 3.0e8)));
+        centered(g, "W / S choose      ENTER confirm      ESC main menu", cx, y + 36, Util.alpha(Color.WHITE, 0.6 + 0.4 * Math.sin(System.nanoTime() / 3.0e8)));
     }
 
     /** One row of a keyboard menu: a highlighted pill with a title and a small hint line beneath it. */

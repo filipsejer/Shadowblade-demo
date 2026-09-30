@@ -52,7 +52,16 @@ final class GamePanel extends JPanel {
         }
         audio.update(world);
         if (world.audio.dirty) world.audio.save(AudioSettings.file());
+        if (world.quitRequested) {
+            timer.stop();
+            System.exit(0);
+        }
         if (stepped) repaint();
+    }
+
+    /** The window is closing: a run in progress is saved so CONTINUE can pick it up next time. */
+    void onClose() {
+        world.saveRunIfAny();
     }
 
     @Override protected void paintComponent(Graphics g) {

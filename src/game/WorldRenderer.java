@@ -39,10 +39,27 @@ final class WorldRenderer {
         if (level.town) drawForestPath(g, w);
         for (Zone z : w.zones) drawZone(g, w, z);
         for (Blast b : w.blasts) drawBlast(g, w, b);
+        Run run = w.run;
+        if (run != null) {
+            if (run.ringActive) drawBossRing(g, w, run);
+            drawAura(g, w, w.player);
+            for (Pickup pk : run.pickups) {
+                if (pk.kind == Pickup.Kind.PORTAL || pk.kind == Pickup.Kind.ELITE_CHEST || pk.kind == Pickup.Kind.BOSS_CHEST) continue;
+                if (view.intersects(pk.x - 30, pk.y - 40, 60, 60)) drawPickup(g, w, pk);
+            }
+        }
         for (Enemy e : w.enemies) drawTelegraph(g, e, w.player);
 
         // shadows first, then everyone in order of depth
         List<Item> items = new ArrayList<>();
+        if (run != null) {
+            for (Pickup pk : run.pickups) {
+                if (pk.kind != Pickup.Kind.PORTAL && pk.kind != Pickup.Kind.ELITE_CHEST && pk.kind != Pickup.Kind.BOSS_CHEST) continue;
+                if (!view.intersects(pk.x - 80, pk.y - 140, 160, 180)) continue;
+                shadow(g, pk.x, pk.y, pk.kind == Pickup.Kind.PORTAL ? 38 : 28, 8);
+                items.add(new Item(pk.y, () -> drawBigPickup(g, w, run, pk)));
+            }
+        }
         for (Level.Station s : level.stations) {
             items.add(new Item(s.y() + 36, () -> drawShop(g, w, s)));
             shadow(g, s.x(), s.y() + 36, 46, 12);
@@ -103,13 +120,15 @@ final class WorldRenderer {
         }
 
         for (Projectile pr : w.projectiles) drawProjectile(g, w, pr);
+        if (run != null) drawOrbitBlades(g, w, p);
         for (Effect e : w.effects) e.render(g);
         Enemy lock = w.lockedTarget();
         if (lock != null) drawLockOn(g, lock);
         for (Enemy e : w.enemies) drawEnemyBar(g, w, e);
         for (Enemy e : w.enemies) if (e.stun > 0.05 && e.spawnIn <= 0 && !e.type.armored && e.hp > 0 && !e.shielded) drawDizzy(g, w, e);
         if (tut == null || tut.showMenu()) drawComboDots(g, p);
-        if (tut == null || tut.showRoll()) drawRollCharge(g, w, p);
+        if ((tut == null || tut.showRoll()) && p.rollUnlocked) drawRollCharge(g, w, p);
+        if (run != null) drawPlayerBar(g, p);
         if (tut != null) drawKeyHint(g, w, tut);
     }
 
@@ -414,6 +433,13 @@ final class WorldRenderer {
         }
         float alpha = e.spawnIn > 0 ? 0.35f : 1f;
         if (e.type == Enemy.Type.SHADE && e.spawnIn <= 0 && e.shadowTimer < 1.0) alpha *= (float) (0.6 + 0.4 * Math.abs(Math.sin(e.shadowTimer * 16)));
+        if (e.elite) {                                                          // an elite: bigger, with a gold glow round it
+            sc = Art.SCALE + 1;
+            double k = 0.5 + 0.5 * Math.sin(w.time * 5);
+            for (int[] o : new int[][]{{-3, 0}, {3, 0}, {0, -3}, {0, 3}}) {
+                s.drawSilhouette(g, x + o[0], fy + o[1], sc, e.faceLeft, 0xFFC840, (float) (0.35 + 0.3 * k) * alpha);
+            }
+        }
         s.draw(g, x, fy, sc, e.faceLeft, 0, alpha);
         if (e.flash > 0) s.drawSilhouette(g, x, fy, sc, e.faceLeft, 0xFFFFFF, 0.85f);
         if (e.stageTimer > 0) {                                                                          // changing stage: untouchable, glowing
@@ -554,8 +580,12 @@ final class WorldRenderer {
     // ------------------------------------------------------------------ attacks in flight
 
     private void drawProjectile(Graphics2D g, World w, Projectile p) {
+        if (p.wave) {
+            drawWave(g, p);
+            return;
+        }
         if (p.friendly) {
-            Art.frame("fx.fireball", w.time, 14).draw(g, p.x, p.y, Art.SCALE, false, Math.atan2(p.vy, p.vx), 1f);
+            Art.frame("fx.fireball", w.time, 14).draw(g, p.x, p.y, Art.SCALE * p.scale, false, Math.atan2(p.vy, p.vx), 1f);
             return;
         }
         boolean big = p.radius >= 8;
@@ -565,6 +595,139 @@ final class WorldRenderer {
             case LAB -> big ? "proj.acidball" : "proj.acid";
         };
         Art.frame(name, w.time, 8).draw(g, p.x, p.y, Art.SCALE, false, 0, 1f);
+    }
+
+    // ------------------------------------------------------------------ roguelike runs
+
+    /** Crescent Wave: a pale blue crescent of light, fading as it flies. */
+    private void drawWave(Graphics2D g, Projectile p) {
+        double ang = Math.atan2(p.vy, p.vx);
+        double r = 30 * p.scale;
+        float a = (float) Util.clamp(p.life / 0.2, 0, 1);
+        java.awt.geom.AffineTransform saved = g.getTransform();
+        g.translate(p.x, p.y);
+        g.rotate(ang);
+        Arc2D arc = new Arc2D.Double(-r * 1.2, -r, r * 2, r * 2, -62, 124, Arc2D.OPEN);
+        g.setStroke(new BasicStroke((float) (11 * p.scale), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setColor(new Color(120, 170, 255, (int) (110 * a)));
+        g.draw(arc);
+        g.setStroke(new BasicStroke((float) (5 * p.scale), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setColor(new Color(235, 245, 255, (int) (235 * a)));
+        g.draw(arc);
+        g.setTransform(saved);
+    }
+
+    /** Soft round glows in a pickup's colour, painted once: drawn under gems and coins so they stand out on any floor. */
+    private static final java.awt.image.BufferedImage[] GLOWS = {
+        glow(new Color(80, 225, 255)), glow(new Color(180, 255, 100)), glow(new Color(255, 80, 130)), glow(new Color(255, 215, 80))};
+
+    private static java.awt.image.BufferedImage glow(Color c) {
+        int size = 48;
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(size, size, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        Graphics2D gg = img.createGraphics();
+        gg.setPaint(new java.awt.RadialGradientPaint(size / 2f, size / 2f, size / 2f, new float[]{0f, 0.35f, 1f},
+            new Color[]{Util.alpha(Color.WHITE, 0.75), Util.alpha(c, 0.55), Util.alpha(c, 0)}));
+        gg.fillRect(0, 0, size, size);
+        gg.dispose();
+        return img;
+    }
+
+    /** Gems, coins and crate pickups lying on the ground, bobbing a little. */
+    private void drawPickup(Graphics2D g, World w, Pickup pk) {
+        double bob = pk.attracted ? 0 : 3 * Math.sin(w.time * 4 + pk.x * 0.05);
+        shadow(g, pk.x, pk.y + 2, pk.kind == Pickup.Kind.GEM ? 8 : 10, 3);
+        if (pk.kind == Pickup.Kind.GEM || pk.kind == Pickup.Kind.COIN) {       // a pulsing glow behind it
+            java.awt.image.BufferedImage halo = GLOWS[pk.kind == Pickup.Kind.COIN ? 3 : pk.gemTier()];
+            double pulse = 0.75 + 0.25 * Math.sin(w.time * 5 + pk.x * 0.07 + pk.y * 0.03);
+            double size = (pk.kind == Pickup.Kind.GEM ? 44 + 8 * pk.gemTier() : 40) * pulse;
+            java.awt.Composite saved = g.getComposite();
+            g.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, (float) Util.clamp(0.55 + 0.45 * pulse, 0, 1)));
+            g.drawImage(halo, (int) (pk.x - size / 2), (int) (pk.y - 19 + bob - size / 2), (int) size, (int) size, null);
+            g.setComposite(saved);
+        }
+        String name = switch (pk.kind) {
+            case GEM -> "run.gem" + pk.gemTier();
+            case COIN -> "run.coin";
+            case HEART -> "run.heart";
+            case MAGNET -> "run.magnet";
+            default -> "run.bomb";
+        };
+        double fps = pk.kind == Pickup.Kind.COIN ? 8 : pk.kind == Pickup.Kind.GEM ? 5 : 3;
+        Art.frame(name, w.time + pk.x * 0.01, fps).draw(g, pk.x, pk.y - 4 + bob, Art.SCALE, false);
+    }
+
+    /** A chest or the portal: sorted by depth with the characters, since they stand up off the ground. */
+    private void drawBigPickup(Graphics2D g, World w, Run run, Pickup pk) {
+        if (pk.kind == Pickup.Kind.PORTAL) {
+            boolean ready = run.find(Pickup.Kind.BOSS_CHEST) == null;
+            double r = 54 + 5 * Math.sin(w.time * 3);
+            g.setColor(Util.alpha(new Color(190, 140, 255), ready ? 0.5 : 0.2));
+            g.setStroke(new BasicStroke(3f));
+            g.draw(new Ellipse2D.Double(pk.x - r, pk.y - r * 0.35, r * 2, r * 0.7));
+            Art.frame("run.portal", w.time, 10).draw(g, pk.x, pk.y, Art.SCALE, false, 0, ready ? 1f : 0.45f);
+            g.setFont(f14b);
+            centered(g, ready ? (run.stage + 1 >= Run.STAGES ? "HOME" : "STAGE " + (run.stage + 2)) : "Open the chest first", pk.x, pk.y - 116,
+                ready ? new Color(220, 190, 255) : new Color(200, 200, 210));
+            return;
+        }
+        boolean boss = pk.kind == Pickup.Kind.BOSS_CHEST;
+        double r = 40 + 4 * Math.sin(w.time * 4);
+        Color glow = boss ? new Color(255, 150, 60) : new Color(255, 214, 90);
+        g.setColor(Util.alpha(glow, 0.45));
+        g.setStroke(new BasicStroke(2.5f));
+        g.draw(new Ellipse2D.Double(pk.x - r, pk.y - r * 0.35, r * 2, r * 0.7));
+        double hop = Math.max(0, Math.sin(w.time * 3)) * 5;
+        Art.frame(boss ? "run.chest.boss" : "run.chest.elite", w.time, 2).draw(g, pk.x, pk.y - hop, Art.SCALE, false);
+    }
+
+    /** The boss fight's ring: a wall of red light you can't cross until the boss is down. */
+    private void drawBossRing(Graphics2D g, World w, Run run) {
+        double r = Run.RING_RADIUS;
+        Ellipse2D ring = new Ellipse2D.Double(run.ringX - r, run.ringY - r, r * 2, r * 2);
+        double k = 0.5 + 0.5 * Math.sin(w.time * 4);
+        g.setColor(new Color(255, 60, 60, (int) (50 + 40 * k)));
+        g.setStroke(new BasicStroke(18f));
+        g.draw(ring);
+        g.setColor(new Color(255, 170, 150, 220));
+        g.setStroke(new BasicStroke(3f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND, 10f, new float[]{22, 14}, (float) (w.time * 40)));
+        g.draw(ring);
+    }
+
+    /** Holy Aura: a soft golden disc round the player, pulsing with each burn tick. */
+    private void drawAura(Graphics2D g, World w, Player p) {
+        double r = Arsenal.auraRadius(p);
+        if (r <= 0) return;
+        double pulse = Util.clamp(p.auraTick / Arsenal.AURA_TICK, 0, 1);
+        boolean evolved = Arsenal.rank(p, Perk.HOLY_AURA) >= Perk.EVOLVED;
+        Color c = evolved ? new Color(255, 245, 170) : new Color(255, 220, 110);
+        Ellipse2D disc = new Ellipse2D.Double(p.x - r, p.y - r * 0.8 + 6, r * 2, r * 1.6);
+        g.setColor(Util.alpha(c, 0.10 + 0.10 * pulse));
+        g.fill(disc);
+        g.setColor(Util.alpha(c, 0.45 + 0.3 * pulse));
+        g.setStroke(new BasicStroke(2.5f));
+        g.draw(disc);
+    }
+
+    /** Orbit Blades: spectral swords circling the player, each pointing along its path. */
+    private void drawOrbitBlades(Graphics2D g, World w, Player p) {
+        int r = Arsenal.rank(p, Perk.ORBIT_BLADES);
+        if (r == 0) return;
+        int n = Arsenal.ORBIT_COUNT[r];
+        Sprite blade = Art.frames("run.blade")[0];
+        for (int i = 0; i < n; i++) {
+            Util.Vec b = Arsenal.bladeAt(p, i, n, Arsenal.ORBIT_RADIUS[r]);
+            double a = p.orbitAngle + i * Math.PI * 2 / n;
+            blade.draw(g, b.x(), b.y() + 4, Art.SCALE, false, a + Math.PI, 0.95f);
+        }
+    }
+
+    /** A small health bar under the hero's feet (a run's HUD keeps your eyes on the middle of the screen). */
+    private void drawPlayerBar(Graphics2D g, Player p) {
+        double bw = 46, x = p.x - bw / 2, y = p.y + 40;
+        g.setColor(new Color(20, 20, 22, 210));
+        g.fill(new Rectangle2D.Double(x - 1.5, y - 1.5, bw + 3, 8));
+        g.setColor(p.hp < p.maxHp * 0.3 ? new Color(235, 70, 70) : new Color(70, 200, 90));
+        g.fill(new Rectangle2D.Double(x, y, bw * Util.clamp(p.hp / p.maxHp, 0, 1), 5));
     }
 
     /** A flask bomb: the spot is marked, a flask falls onto it, then it bursts in a green flash. */

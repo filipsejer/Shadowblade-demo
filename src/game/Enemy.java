@@ -81,6 +81,8 @@ final class Enemy {
     boolean chargeHit;          // whether this charge has already landed its hit
     boolean summoned;           // a creation of the boss: worth no XP, and it falls apart when he does
     boolean noXp;               // worth no XP (the tutorial's enemy)
+    boolean elite;              // a roguelike run's elite: much tougher, gold-tinted, drops a treasure chest
+    double orbitCd;             // a run's orbit blades: time until they may cut this one again
     boolean shellOnHit;         // the tutorial's enemy: the first sword hit makes it curl into a thorny shell
     boolean shelled;            // ...which it only does once
     boolean shielded;           // curled up in the shell: swords bounce off it, magic breaks it open
@@ -132,21 +134,26 @@ final class Enemy {
      * {@link Type#resist}) go up less; armored enemies (the boss) not at all — juggling him would trivialise the fight.
      */
     void launch(double vz0) {
-        if (type.armored) return;
+        if (type.armored || elite) return;
         vz = Math.max(vz, vz0 * (1 - type.resist));
     }
 
     /** A sword blow. */
     void hurt(World w, double dmg, double kbx, double kby, double stunTime) {
-        damage(w, dmg, kbx, kby, stunTime, Color.WHITE, false);
+        damage(w, dmg, kbx, kby, stunTime, Color.WHITE, false, false);
     }
 
     /** Magic (a spell or its burning): the colour is the damage number's. */
     void hurt(World w, double dmg, double kbx, double kby, double stunTime, Color textColor) {
-        damage(w, dmg, kbx, kby, stunTime, textColor, true);
+        damage(w, dmg, kbx, kby, stunTime, textColor, true, false);
     }
 
-    private void damage(World w, double dmg, double kbx, double kby, double stunTime, Color textColor, boolean magic) {
+    /** Any blow, saying whether it's magic and whether it was a critical hit (a bigger number). */
+    void hurt(World w, double dmg, double kbx, double kby, double stunTime, Color textColor, boolean magic, boolean crit) {
+        damage(w, dmg, kbx, kby, stunTime, textColor, magic, crit);
+    }
+
+    private void damage(World w, double dmg, double kbx, double kby, double stunTime, Color textColor, boolean magic, boolean crit) {
         if (hp <= 0 || intangible() || stageTimer > 0) return;        // nothing touches a shade in shadow mode, or a boss changing stage
         if (shielded) {
             if (!magic) { bounce(w); return; }                          // swords glance off the shell...
@@ -166,7 +173,7 @@ final class Enemy {
             if (state == State.WINDUP) interrupt();
         }
         w.effects.add(Effect.text(x + (w.rng.nextDouble() - 0.5) * 14, y - radius - 6 - z,
-            String.valueOf(Math.max(1, (int) Math.round(dmg))), textColor, false));
+            String.valueOf(Math.max(1, (int) Math.round(dmg))), textColor, crit));
         if (shellOnHit && !shelled && !magic && hp > 0) curlUp(w);
     }
 

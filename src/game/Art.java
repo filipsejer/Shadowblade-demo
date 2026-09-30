@@ -22,6 +22,7 @@ final class Art {
         CreatureArt.register(SPRITES);
         FxArt.register(SPRITES);
         TownArt.register(SPRITES);
+        RunArt.register(SPRITES);
     }
 
     static boolean has(String name) { return SPRITES.containsKey(name); }

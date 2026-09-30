@@ -177,6 +177,8 @@ final class Level {
     boolean town;
     /** True for any level that should draw the (shuttered/lit) train station building at {@link #guideX}/{@link #guideY} — {@link #town()} always; also used by a standalone level that just wants the same building, without the rest of Transit Town's furniture. */
     boolean hasStation;
+    /** A roguelike run's arena: which stage it's for (-1 for every other kind of level). */
+    int arenaStage = -1;
     /** Transit Town only: where the path out into the forest (level 1) is. */
     double forestX, forestY;
     /** Bumped whenever doors open or close, so anything cached from the map's shape knows to rebuild. */
@@ -591,6 +593,69 @@ final class Level {
             "No wares today, I'm afraid - just passing through, same as you.", oq.getCenterX() - 140, oq.getCenterY()));
         level.npcs.add(new Npc("CHILD", "town.child.idle",
             "Everyone who comes through here ends up somewhere far away. Where will YOU go?", oq.getCenterX() + 210, oq.getMaxY() - 150));
+        return level;
+    }
+
+    /** Side of a roguelike run's square arena. */
+    static final double ARENA_SIZE = 3600;
+
+    /**
+     * A roguelike run's stage: one big open field in the stage's theme (see {@link Run}), with the boss to be fought at
+     * its end. No doors, no rooms to clear, no trainers: the monsters come to you. The forest has trees and boulders to
+     * weave between; every stage has crates to smash for pickups. The same stage always gets the same layout.
+     */
+    static Level arena(int stage) {
+        Builder b = new Builder();
+        Room field = b.start("ARENA", ARENA_SIZE, ARENA_SIZE, new Roster());
+        List<Door> doors = b.finish();
+        Rectangle2D.Double f = field.bounds;
+        double cx = f.getCenterX(), cy = f.getCenterY();
+        Level level = new Level(b.rooms, doors, List.of(), cx, cy, cx, cy);
+        level.arenaStage = stage;
+        level.theme = THEMES[Math.min(stage, THEMES.length - 1)];
+        level.name = "STAGE " + (stage + 1) + "   -   " + level.theme.title.toUpperCase();
+        level.bossName = BOSS_NAMES[Math.min(stage, BOSS_NAMES.length - 1)];
+        field.visited = true;
+        field.state = Room.State.CLEARED;                             // (a safe room is paved like a plaza; this gets the stage's own ground)
+
+        Random rng = new Random(4242L + stage * 101L);
+        if (level.theme == Theme.FOREST) {                         // trees and rocks to weave through
+            String[] kinds = {"oak", "oak", "boulder", "stump", "bush"};
+            double[] radii = {28, 28, 22, 18, 0};
+            for (int placed = 0, tries = 0; placed < 34 && tries < 600; tries++) {
+                double x = f.x + 150 + rng.nextDouble() * (f.width - 300), y = f.y + 150 + rng.nextDouble() * (f.height - 300);
+                if (Util.dist(x, y, cx, cy) < 420) continue;
+                boolean ok = true;
+                for (Landmark l : level.landmarks) if (Util.dist(x, y, l.x(), l.y()) < 260) ok = false;
+                if (!ok) continue;
+                int k = rng.nextInt(kinds.length);
+                level.landmarks.add(new Landmark(kinds[k], x, y, radii[k]));
+                placed++;
+            }
+        } else if (level.theme == Theme.CITY) {                   // little parks: grass beds you walk around
+            for (int placed = 0, tries = 0; placed < 12 && tries < 400; tries++) {
+                double w = 140 + rng.nextInt(3) * 60, h = 90 + rng.nextInt(2) * 50;
+                double x = f.x + 200 + rng.nextDouble() * (f.width - 400 - w), y = f.y + 200 + rng.nextDouble() * (f.height - 400 - h);
+                Rectangle2D.Double bed = new Rectangle2D.Double(x, y, w, h);
+                if (bed.intersects(cx - 400, cy - 400, 800, 800)) continue;
+                boolean ok = true;
+                for (Rectangle2D.Double o : level.grassPatches) if (new Rectangle2D.Double(o.x - 260, o.y - 260, o.width + 520, o.height + 520).intersects(bed)) ok = false;
+                if (!ok) continue;
+                level.grassPatches.add(bed);
+                placed++;
+            }
+        }
+        for (int placed = 0, tries = 0; placed < Run.CRATES && tries < 900; tries++) {
+            double x = f.x + 120 + rng.nextDouble() * (f.width - 240), y = f.y + 120 + rng.nextDouble() * (f.height - 240);
+            if (Util.dist(x, y, cx, cy) < 280) continue;
+            boolean ok = true;
+            for (Breakable o : level.breakables) if (Util.dist(x, y, o.x, o.y) < 180) ok = false;
+            for (Landmark l : level.landmarks) if (Util.dist(x, y, l.x(), l.y()) < 90) ok = false;
+            for (Rectangle2D.Double g : level.grassPatches) if (new Rectangle2D.Double(g.x - 60, g.y - 60, g.width + 120, g.height + 120).contains(x, y)) ok = false;
+            if (!ok) continue;
+            level.breakables.add(new Breakable(rng.nextBoolean() ? Breakable.Kind.CRATE : Breakable.Kind.BARREL, x, y, 1));
+            placed++;
+        }
         return level;
     }
 

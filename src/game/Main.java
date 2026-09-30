@@ -11,6 +11,9 @@ public final class Main {
             JFrame frame = new JFrame("Spellblade");
             GamePanel panel = new GamePanel();
             frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            frame.addWindowListener(new java.awt.event.WindowAdapter() {
+                @Override public void windowClosing(java.awt.event.WindowEvent e) { panel.onClose(); }
+            });
             frame.setContentPane(panel);
             frame.pack();
             frame.setLocationRelativeTo(null);

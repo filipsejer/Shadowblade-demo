@@ -42,6 +42,21 @@ final class Player {
 
     // spell stats
     double spellPower = 1, cooldownMult = 1;
+
+    // roguelike runs (see Run / Perk / Arsenal): what you've picked, and the stats picks and gear raise
+    final int[] perk = new int[Perk.values().length];
+    final double[] skillCd = new double[Perk.values().length];
+    /** False at the start of a run: the roll is a level-up pick there. Always true in the campaign. */
+    boolean rollUnlocked = true;
+    double rollBonus = 1;
+    double critChance = 0, critMult = 1.8;
+    /** Fraction of incoming damage ignored. */
+    double armor = 0;
+    double regen = 0;
+    /** How close XP gems and gold have to be before they fly to you. */
+    double magnet = 110;
+    double xpMult = 1, goldMult = 1;
+    double orbitAngle, auraTick, waveCd;
     final CommandMenu menu = new CommandMenu();
     final int[] spellLevel = new int[Ability.values().length];   // 0 = not learned
     final double[] cooldown = new double[Ability.values().length];
@@ -77,7 +92,7 @@ final class Player {
 
     /** 1 normally; {@link #ROLL_BONUS} from level 5; {@link #ROLL_BONUS_2} from level 10. */
     double rollDistanceMult() {
-        return level >= ROLL_BONUS_LEVEL_2 ? ROLL_BONUS_2 : level >= ROLL_BONUS_LEVEL ? ROLL_BONUS : 1.0;
+        return (level >= ROLL_BONUS_LEVEL_2 ? ROLL_BONUS_2 : level >= ROLL_BONUS_LEVEL ? ROLL_BONUS : 1.0) * rollBonus;
     }
 
     /** How far a roll carries you, in pixels. */
@@ -131,19 +146,27 @@ final class Player {
         for (int i = 0; i < cooldown.length; i++) cooldown[i] = Math.max(0, cooldown[i] - dt);
         mp = Math.min(maxMp, mp + mpRegen * dt);
 
-        // the command menu turns ENTER / arrow presses into "attack" or "cast this spell"
-        CommandMenu.Item cursorBefore = menu.cursor;
-        boolean openBefore = menu.magicOpen, shiftBefore = menu.shiftOpened;
-        int spellBefore = menu.spellCursor;
-        CommandMenu.Result command = menu.update(in, learnedSpells());
-        if (menu.magicOpen != openBefore) {
-            if (menu.magicOpen) w.sound(Snd.MENU_OPEN);
-            else if (!shiftBefore) w.sound(Snd.MENU_BACK);          // letting go of Shift closes the list quietly
-        } else if (menu.cursor != cursorBefore || menu.spellCursor != spellBefore) {
-            w.sound(Snd.MENU_MOVE);
+        CommandMenu.Result command;
+        if (w.run != null) {
+            // a run has no command menu (skills fire on their own): J attacks, and holding it keeps swinging. ENTER is kept
+            // for the level-up cards, so a held attack can never pick one by accident
+            command = CommandMenu.Result.NOTHING;
+            if (in.pressed(KeyEvent.VK_J) || in.down(KeyEvent.VK_J)) attackBuffer = INPUT_BUFFER;
+        } else {
+            // the command menu turns ENTER / arrow presses into "attack" or "cast this spell"
+            CommandMenu.Item cursorBefore = menu.cursor;
+            boolean openBefore = menu.magicOpen, shiftBefore = menu.shiftOpened;
+            int spellBefore = menu.spellCursor;
+            command = menu.update(in, learnedSpells());
+            if (menu.magicOpen != openBefore) {
+                if (menu.magicOpen) w.sound(Snd.MENU_OPEN);
+                else if (!shiftBefore) w.sound(Snd.MENU_BACK);          // letting go of Shift closes the list quietly
+            } else if (menu.cursor != cursorBefore || menu.spellCursor != spellBefore) {
+                w.sound(Snd.MENU_MOVE);
+            }
+            if (command.attackPressed()) attackBuffer = INPUT_BUFFER;
         }
-        if (command.attackPressed()) attackBuffer = INPUT_BUFFER;
-        if (in.pressed(KeyEvent.VK_SPACE)) dodgeBuffer = INPUT_BUFFER;
+        if (in.pressed(KeyEvent.VK_SPACE) && rollUnlocked) dodgeBuffer = INPUT_BUFFER;
 
         double ix = (in.down(KeyEvent.VK_D) ? 1 : 0) - (in.down(KeyEvent.VK_A) ? 1 : 0);
         double iy = (in.down(KeyEvent.VK_S) ? 1 : 0) - (in.down(KeyEvent.VK_W) ? 1 : 0);
@@ -262,6 +285,7 @@ final class Player {
         slideVx = slideVy = 0;
         if (hitFinisher) w.sound(Snd.SWING_HEAVY);
         else w.sound(inRange ? Snd.DASH : Snd.SWING_LIGHT);      // a light attack that dashes through someone whooshes; one at thin air swishes
+        waveQueued = w.run != null;                              // Crescent Wave (a run skill) fires once we know which way we're facing
         if (inRange) {
             facing = Util.angleTo(x, y, target.x, target.y);
             double toCenter = Util.dist(x, y, target.x, target.y);
@@ -279,7 +303,13 @@ final class Player {
             slideVx = Math.cos(facing) * 300;
             slideVy = Math.sin(facing) * 300;
         }
+        if (waveQueued) {
+            waveQueued = false;
+            Arsenal.onSwing(w, this, hitFinisher);
+        }
     }
+
+    private boolean waveQueued;
 
     private void doHit(World w) {
         double reach = (hitFinisher ? 76 : 62) * reachMult;
@@ -298,9 +328,10 @@ final class Player {
                 if (Math.abs(Util.angleDiff(facing, ang)) > tolerance) continue;
             }
             if (e.shielded) { e.bounce(w); continue; }                     // a thorny shell: the blow glances off
-            double dmg = base * (0.92 + w.rng.nextDouble() * 0.16);
+            boolean crit = w.rng.nextDouble() < critChance;
+            double dmg = base * (0.92 + w.rng.nextDouble() * 0.16) * (crit ? critMult : 1);
             double kb = hitFinisher ? 430 : 150;
-            e.hurt(w, dmg, Math.cos(ang) * kb, Math.sin(ang) * kb, hitFinisher ? 0.45 : 0.2);
+            e.hurt(w, dmg, Math.cos(ang) * kb, Math.sin(ang) * kb, hitFinisher ? 0.45 : 0.2, crit ? Arsenal.CRIT : Color.WHITE, false, crit);
             if (hitFinisher) e.launch(LAUNCH_VZ);                              // the combo's last hit pops them into the air
             w.soundAt(e.type.armored ? Snd.HIT_ARMOR : hitFinisher ? Snd.HIT_HEAVY : Snd.HIT_LIGHT, e.x, e.y);
             w.effects.add(Effect.particle(e.x, e.y - e.radius * 0.3 - e.z, 0, 0, 0.24, "fx.spark", -1, 1, 0, 3));   // impact star
@@ -389,6 +420,7 @@ final class Player {
 
     void hurt(World w, double dmg, double fromX, double fromY) {
         if (invuln > 0 || hp <= 0) return;
+        dmg *= 1 - armor;
         hp -= dmg;
         invuln = 0.6;
         hurtTimer = 0.6;

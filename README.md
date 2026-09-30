@@ -1,6 +1,10 @@
 # Spellblade
 
-Top-down action roguelike with a Kingdom Hearts-style combat feel, played room by room. Plain Java (Swing / Java2D) — no dependencies.
+Top-down action roguelike with a Kingdom Hearts-style combat feel. Plain Java (Swing / Java2D) — no dependencies.
+
+The main game is a **Survivor.io / Megabonk-style roguelike** (see **Roguelike runs** below): hold off endless hordes across
+three stages, level up and pick your powers, beat three bosses, and keep the equipment you find for future runs. The
+original room-by-room adventure is still there as the **Classic Campaign**.
 All the art is pixel art painted by code at startup (there are no image files): see **Graphics engine** below. All the music and sound effects are
 synthesised by code too (there are no audio files): see **Sound engine** below. The game opens with a short story that teaches the controls (see **The opening story**). Level 1 is **The Whispering Forest**, level 2 is **The Neon City**, and level 3 is **The Mad Scientist's Laboratory**.
 
@@ -27,6 +31,22 @@ needs doing once; after that it opens normally. If that doesn't work, **System S
 Needs a JDK 17+.
 
 ## Controls
+
+**In a roguelike run:**
+
+| Key | Action |
+| --- | --- |
+| W A S D | Move |
+| J | Attack. **Hold it** to keep swinging (combos chain on their own); you dash through the nearest enemy |
+| Space | Roll — only once you've picked **Evasive Roll** on a level-up (a run starts with nothing but the sword) |
+| A / D, Enter (or E), R | On a level-up or chest: choose a card, take it, reroll the cards (limited per run). Enter never attacks in a run, and the cards ignore it for their first half-second, so a key you were already pressing can't pick one by accident |
+| Tab / Q | Lock on (cycle) / release |
+| Esc | Pause: resume, music / effects volume, **Save & Quit**, or abandon the run |
+| M | Mute / unmute |
+
+Your skills fire on their own; there is no Magic menu in a run.
+
+**In the Classic Campaign:**
 
 | Key | Action |
 | --- | --- |
@@ -80,19 +100,101 @@ it falls) and `Enemy.JUGGLE_VZ` (how much each juggle hit adds) in `Player.java`
 
 ## Main menu
 
-The game opens on a menu with two rows, **W / S** (or the arrows) to choose and **Enter** to confirm:
+The game opens on the main menu (**W / S** to choose, **Enter** to confirm):
+
+- **New Game** starts a fresh roguelike run. If a run is saved, the first press warns that it will be thrown away and a second press confirms.
+- **Continue** loads the saved run (the row shows its stage, level and clock). Greyed out when there's nothing to continue.
+- **Armory** is the equipment screen (see **Items and the Armory**).
+- **Classic Campaign** opens the original adventure's own menu, described next. **Esc** comes back.
+- **Quit** closes the game.
+
+Built in `World.updateMainMenu` and drawn in `RunHud.drawMainMenu`.
+
+The Classic Campaign's menu has two rows:
 
 - **Play** starts the opening story from the very beginning, exactly like pressing Enter always has (`T` still switches the story off first, so Play drops straight into level 1 instead — `./run.sh notutorial` starts with it off).
 - **Select Chapter** opens a second screen listing the three levels (name, boss, theme). Choosing one skips straight to that level's hub with a level-15 character: `World.CHAPTER_SELECT_LEVEL` skill-ups' worth of skill points (28, at 2 per level — see `World.SKILL_POINTS_PER_LEVEL`), all unspent, nothing bought at the trainers yet. It's a quick way to try a level, or the trainers' late-game upgrades, without the grind. `Esc` backs out to the main menu.
 
 Both screens are built in `World.updateTitle` / `World.updateChapterSelect` / `World.beginChapter`, and drawn in `Renderer.drawTitle` / `Renderer.drawChapterSelect`.
+(`World.State.TITLE` is now the main menu; the campaign's own menu is `World.State.CLASSIC`.)
 
 Select Chapter has one extra row below the three real levels: **PROTOTYPE**, a hand-drawn layout being tried out (`Level.protoSketch()`, `World.beginPrototype()`). It's not one of the three real levels — it doesn't count towards `Level.COUNT`, has no enemies, and can't be "cleared" — just a level built with the room-shape system (see **Room shapes**) to try against something someone actually sketched, before committing to it as a real room in a real level. Real rooms with real walls between them, a doorway pushed off-centre on two of them to match the sketch's zigzag (see **Room shapes**), and a couple of placeholders for systems that don't exist yet: the barricade across the deck is a row of plain, walk-through (`radius` 0) log landmarks standing in for real barricade art and the mission-flag system that would one day remove it; the two doors marked as exits to somewhere not yet designed lead to small, empty stub rooms rather than faking content that isn't there.
+
+## Roguelike runs
+
+A run is three **stages**, one per theme: **The Whispering Forest**, **The Neon City** and **The Mad Scientist's
+Laboratory**. Each stage is one big open arena (`Level.arena(stage)`, 3600 x 3600: trees and rocks in the forest, grass
+beds in the city, crates everywhere) and a clock.
+
+- **Survive 5 minutes.** Monsters keep arriving from just off-screen (`Run.direct`); the director keeps a target
+  population around you that grows with the clock (`Run.population`), and which monsters come changes as the stage goes
+  on (`Run.pickType`: runners from 0:30 in the forest, shooters, brutes, and Shades from the city on). Anything left far
+  behind is brought back round in front of you, so the pressure never just trails off.
+- **Scaling.** Monster health and damage grow with the *threat* — 5 per stage plus the minutes into this one — and, more
+  gently, with your character level (`Run.hpMult` / `Run.dmgMult`). A grunt has about 16 HP at the very start and a few
+  hundred by the end of stage 3.
+- **Swarms** at 1:00, 2:30 and 4:00: a ring of monsters closing in from every side at once.
+- **Elites** at 1:40 and 3:20: a much tougher, bigger, gold-glowing monster that can't be launched. It drops a
+  **treasure chest**: gold, a 40% chance of an item, and a free upgrade pick (which always leads with an evolution if one
+  is ready).
+- **The boss** arrives at 5:00 — the Guardian, the Warden, then the Mad Scientist (still with his two health bars).
+  Everything else vanishes (leaving its XP gem behind) and a red **ring** closes around you both: nobody leaves it until
+  the boss is down. Its **chest** always holds an item and gold, and a **portal** opens: step in (once the chest is
+  opened) to go on to the next stage, fully healed, with everything you've built. The last portal ends the run in victory.
+
+**XP and level-ups.** Every monster drops an XP gem (cyan, green, or red for the big ones, each with a glow so it shows up on grass); walk near and it flies to you
+(your *pickup range*). Each level-up pauses the action and offers three cards (`Perk.offer`), one of which you take:
+
+- **Skills** fire by themselves, up to 5 of them, 5 ranks each: **Crescent Wave** (your sword swings send piercing
+  waves), **Fireball**, **Lightning**, **Ice Storm**, **Orbit Blades**, **Holy Aura**, and **Healing** (automatic, 3 ranks).
+- **Passives**, up to 6: **Evasive Roll** (unlocks the roll — offered on every one of your first few level-ups until you
+  take it), **Combo Extension**, **Blade Mastery**, **Quick Strikes**, **Long Reach**, **Vampiric Strikes**, **Arcane
+  Power**, **Quick Casting**, **Vitality**, **Fleet Foot**, **Magnetism**, **Wisdom**, **Iron Skin**, **Regeneration**,
+  **Precision** (crits).
+- **Evolutions:** a skill at rank 5 plus its partner passive (any rank) can **evolve** — Crescent Wave + Quick Strikes =
+  *Moonlit Crescent*, Fireball + Arcane Power = *Inferno Comet*, Lightning + Quick Casting = *Storm Lord*, Ice Storm +
+  Iron Skin = *Absolute Zero*, Orbit Blades + Blade Mastery = *Blade Tempest*, Holy Aura + Vitality = *Sanctuary*.
+- **R** rerolls the cards (once per run, more with the Crown of Insight).
+
+**Crates** hold gold, hearts (heal 30%), magnets (pull in every gem on the map) and bombs (wipe out ordinary monsters on
+screen). They're quietly restocked out of sight as you break them.
+
+**Saving.** A run saves itself at the start of every stage and every 30 seconds, when you pick **Save & Quit**, and when
+the window is closed mid-run; **Continue** picks it up at the same point on the stage's clock with the same level, picks,
+gold and gear (monsters aren't saved — the arena refills; a boss fight restarts from the boss's 10-second warning).
+Dying, winning or abandoning deletes the save: a run can't be replayed from a save point. Saves live in
+`~/.spellblade/run.properties` (and the profile in `~/.spellblade/profile.properties`); `-Dspellblade.home=<folder>`
+moves them.
+
+## Items and the Armory
+
+Items come out of chests (elite chests sometimes, boss chests always) and, at the end of a run, a bonus: a victory adds
+an Epic-or-better item, and a long run that found nothing gets a consolation piece. **You keep everything you found
+however the run ends**, and the gold you picked up.
+
+- **Six slots:** weapon, helm, armor, gloves, boots, ring. Each slot has a main stat (melee damage, skill damage, max HP,
+  attack speed, move speed, crit chance) plus more random lines — damage taken, regeneration, pickup range, XP gain,
+  skill cooldowns, gold found.
+- **Rarity:** Common, Uncommon, Rare, Epic, Legendary — more stat lines and bigger numbers, and items found deeper into a
+  run roll higher. Each **Legendary** also has a power of its own: *Dawnbreaker* (runs start with Crescent Wave), *Crown
+  of Insight* (+2 rerolls), *Phoenix Mail* (revive once per run), *Tempest Gauntlets* (start with a 3-hit combo),
+  *Windwalkers* (start with the roll), *Ring of Fortune* (4 cards per level-up).
+- **The Armory** (main menu): **Enter** equips or takes off, **U** spends gold to upgrade an item (+12% of its stats per
+  level, up to +10), **X** twice salvages it for gold. The bag holds 60; beyond that the weakest unworn items are
+  salvaged automatically. What you wear applies from the start of every new run (a loaded run keeps the gear it started
+  with).
 
 ## Layout
 
 | File | What it does |
 | --- | --- |
+| `Run.java` | A roguelike run: the stage clock, the spawn director and difficulty scaling, swarms, elites, the boss ring, drops and pickups, level-up choices, the end of a run, and saving / loading it |
+| `Perk.java` | Everything a level-up can offer (skills, passives, evolutions), their text, their effects, and how the cards are drawn |
+| `Arsenal.java` | The run's self-firing skills and their numbers per rank |
+| `Pickup.java` | Gems, gold, hearts, magnets, bombs, chests and the portal |
+| `Item.java` / `Profile.java` | Equipment (slots, rarities, stats, legendaries) and the persistent profile (gold, bag, what's worn, records) |
+| `RunHud.java` | The main menu, a run's HUD, the level-up cards, a run's pause menu, the results screen, the Armory, and the perk icons |
+| `RunArt.java` | Sprites for gems, coins, crate pickups, chests, the portal, the orbiting sword and the equipment icons |
 | `Level.java` | The maps: rooms (each one or more glued-together rectangles — see **Room shapes** below), corridors (doors), the trainers, the guide's spot, the sealed boss door, and walkable-area collision. `Level.create(n)` builds level n (`levelOne()`, `levelTwo()`), `Level.tutorial()` the opening story's map, `Level.town()` Transit Town |
 | `Tutorial.java` / `Dialogue.java` | The opening story: the script (each lesson is a scene with the squirrel) and the speech box's rules (typewriter text, lines that wait for a key or are called out, the voice's chirps); `Dialogue` is reused as-is for Transit Town's locals |
 | `TownArt.java` | Transit Town's three locals and the train station, shuttered and lit |
@@ -241,6 +343,15 @@ with the sound tests after changing an instrument). Sound effect recipes are in 
 first number in `Snd.java`. Default volumes are in `AudioSettings.java`; the saved settings are in `~/.spellblade/audio.properties`.
 
 ## Where to tune things
+
+- **Roguelike difficulty:** `Run.hpMult` / `Run.dmgMult` (scaling with the clock and your level), `Run.population` (how
+  many monsters are around), `Run.pickType` (which ones), `Run.STAGE_TIME` / `ELITE_TIMES` / `SWARM_TIMES`, and the
+  boss multipliers in `Run.spawnBoss`.
+- **Level-up curve:** `Run.xpFor`; gem values in `Run.dropFor`.
+- **Skills:** the per-rank arrays at the top of `Arsenal.java` (keep the text in `Perk.java` in step); passives' effects
+  in `Perk.apply`; skill / passive slot limits `Perk.SKILL_SLOTS` / `PASSIVE_SLOTS`.
+- **Loot:** rarity weights `Run.ELITE_RARITY` / `BOSS_RARITY` and the victory bonus in `Run.finish`; stat ranges in
+  `Item.Stat`; upgrade and salvage prices in `Item.upgradeCost` / `salvageValue`.
 
 - **Enemy stats:** the `Type` enum in `Enemy.java`.
 - **Which enemies are in a room (and how many waves):** the `Roster` passed to each room in `Level.levelOne()` / `levelTwo()`; chain `.nextWave()` calls onto it for a room with reinforcements.

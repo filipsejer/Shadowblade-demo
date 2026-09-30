@@ -126,7 +126,13 @@ enum Snd {
     TOWN_TALK(-27, 0.045, 2, 4),
 
     // air combos
-    ENEMY_LAND(-24, 0.06, 3, 2);
+    ENEMY_LAND(-24, 0.06, 3, 2),
+
+    // roguelike runs (added last so every sound above keeps its exact variations)
+    XP_PICKUP(-27, 0.025, 3, 3),
+    COIN_PICKUP(-22, 0.04, 2, 2),
+    CHEST_OPEN(-13, 0.30, 1, 1),
+    POWERUP(-17, 0.20, 1, 1);
 
     final double loudDb, minGap;
     final int voices, variants;
