@@ -37,9 +37,9 @@ Needs a JDK 17+.
 | Key | Action |
 | --- | --- |
 | W A S D | Move |
-| J | Attack. **Hold it** to keep swinging (combos chain on their own); you dash through the nearest enemy |
+| Enter (or J) | Attack. **Hold it** to keep swinging (combos chain on their own); you dash through the nearest enemy |
 | Space | Roll — only once you've picked **Evasive Roll** on a level-up (a run starts with nothing but the sword) |
-| A / D, Enter (or E), R | On a level-up or chest: choose a card, take it, reroll the cards (limited per run). Enter never attacks in a run, and the cards ignore it for their first half-second, so a key you were already pressing can't pick one by accident |
+| 1 / 2 / 3, R | On a level-up or chest: **1, 2 or 3** (number row or numpad; 4 with the Ring of Fortune) takes that card, R rerolls them (limited per run). The cards ignore their keys for their first moment, so a key you were already pressing can't pick one by accident, and Enter (the attack) never picks one |
 | Tab / Q | Lock on (cycle) / release |
 | Esc | Pause: resume, music / effects volume, **Save & Quit**, or abandon the run |
 | M | Mute / unmute |
@@ -117,7 +117,12 @@ and your record. The logo uses the first of Cinzel, Trajan Pro, Palatino, Palati
 that's installed. Input is handled in `World.updateMainMenu`.
 
 The Classic Campaign's menu, its chapter list and the Armory share the same backdrop and the same look (`MenuStyle`:
-gold serif headings, gliding selection, key caps, dark glass cards). The Classic menu has a card showing the
+gold serif headings, gliding selection, key caps, dark glass cards). So do a run's overlays, drawn over the darkened
+fight (`RunHud`). The pause menu has volume sliders and a card showing your build. The level-up / treasure cards are
+glass cards tinted in the perk's colour, with rank diamonds. The results screen has a gold VICTORY or a blood-red
+DEFEATED, a row of stat tiles, and the loot as small cards. The Classic Campaign's pause and "You died" screens
+(`CampaignScreens`) match them. The results and "You died" screens ignore keys for their first second
+(`World.overTimer`), so an attack tapped just as you fall can't dismiss them unseen. The Classic menu has a card showing the
 campaign's own controls, since they differ from a run's. The chapter list shows the selected level's boss in its corner
 card. The Armory is three cards: what you're wearing and its total bonuses, your bag, and the selected item with what
 Enter / U / X would do to it.

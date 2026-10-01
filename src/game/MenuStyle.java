@@ -91,7 +91,24 @@ final class MenuStyle {
      * things up under it).
      */
     static Shape heading(Graphics2D g, String text, double x, double base, double size, double s) {
-        String key = text + "|" + Math.round(size * 10) + "|" + Math.round(s * 100);
+        return heading(g, text, x, base, size, s, false);
+    }
+
+    /** As {@link #heading(Graphics2D, String, double, double, double, double)}, in blood red instead of gold when {@code red}. */
+    static Shape heading(Graphics2D g, String text, double x, double base, double size, double s, boolean red) {
+        Heading h = paintedHeading(text, size, s, red);
+        g.drawImage(h.image, (int) Math.round(x) + h.dx, (int) Math.round(base) + h.dy, null);
+        return AffineTransform.getTranslateInstance(Math.round(x), Math.round(base)).createTransformedShape(h.outline);
+    }
+
+    /** A heading centred on {@code cx}. */
+    static Shape headingCentred(Graphics2D g, String text, double cx, double base, double size, double s, boolean red) {
+        Rectangle2D b = paintedHeading(text, size, s, red).outline.getBounds2D();
+        return heading(g, text, cx - b.getWidth() / 2 - b.getX(), base, size, s, red);
+    }
+
+    private static Heading paintedHeading(String text, double size, double s, boolean red) {
+        String key = text + "|" + Math.round(size * 10) + "|" + Math.round(s * 100) + (red ? "|red" : "");
         Heading h = HEADINGS.get(key);
         if (h == null) {
             Font f = serif(Font.BOLD, size, 0.03);
@@ -102,21 +119,20 @@ final class MenuStyle {
             Graphics2D ig = img.createGraphics();
             antialias(ig);
             ig.translate(pad - b.getX(), pad - b.getY());
-            paintGold(ig, outline, size / 92.0);             // (size already includes the window scale)
+            paintGold(ig, outline, size / 92.0, red);        // (size already includes the window scale)
             ig.dispose();
             h = new Heading(img, (int) Math.floor(b.getX()) - pad, (int) Math.floor(b.getY()) - pad, outline);
             HEADINGS.put(key, h);
         }
-        g.drawImage(h.image, (int) Math.round(x) + h.dx, (int) Math.round(base) + h.dy, null);
-        return AffineTransform.getTranslateInstance(Math.round(x), Math.round(base)).createTransformedShape(h.outline);
+        return h;
     }
 
     /** The gold treatment itself; {@code k} scales the glow and the edge with the lettering's size. */
-    private static void paintGold(Graphics2D g, Shape shape, double k) {
+    private static void paintGold(Graphics2D g, Shape shape, double k, boolean red) {
         Rectangle2D b = shape.getBounds2D();
         for (int i = 5; i >= 1; i--) {
             g.setStroke(new BasicStroke((float) (i * 7 * k), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-            g.setColor(new Color(255, 150, 50, 11));
+            g.setColor(red ? new Color(255, 60, 40, 12) : new Color(255, 150, 50, 11));
             g.draw(shape);
         }
         AffineTransform saved = g.getTransform();
@@ -125,12 +141,27 @@ final class MenuStyle {
         g.fill(shape);
         g.setTransform(saved);
         g.setStroke(new BasicStroke((float) Math.max(2, 5 * k), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        g.setColor(new Color(48, 22, 8));
+        g.setColor(red ? new Color(40, 8, 8) : new Color(48, 22, 8));
         g.draw(shape);
+        Color[] metal = red
+            ? new Color[]{new Color(255, 225, 215), new Color(245, 120, 100), new Color(200, 50, 45), new Color(110, 18, 22)}
+            : new Color[]{new Color(255, 248, 215), new Color(255, 212, 110), new Color(240, 158, 48), new Color(176, 84, 26)};
         g.setPaint(new LinearGradientPaint((float) b.getX(), (float) b.getY(), (float) b.getX(), (float) b.getMaxY(),
-            new float[]{0f, 0.46f, 0.54f, 1f},
-            new Color[]{new Color(255, 248, 215), new Color(255, 212, 110), new Color(240, 158, 48), new Color(176, 84, 26)}));
+            new float[]{0f, 0.46f, 0.54f, 1f}, metal));
         g.fill(shape);
+    }
+
+    /**
+     * Darkens the game underneath an overlay (the pause, a level-up, the results): an even veil plus deeper shadow toward
+     * the edges, so whatever's drawn on top reads while the fight stays visible behind it.
+     */
+    static void veil(Graphics2D g, int width, int height, int alpha) {
+        g.setColor(new Color(6, 6, 16, alpha));
+        g.fillRect(0, 0, width, height);
+        float r = (float) (Math.hypot(width, height) / 2);
+        g.setPaint(new java.awt.RadialGradientPaint(width / 2f, height / 2f, r, new float[]{0f, 0.55f, 1f},
+            new Color[]{new Color(0, 0, 0, 0), new Color(0, 0, 0, 40), new Color(0, 0, 0, 170)}));
+        g.fillRect(0, 0, width, height);
     }
 
     /** A light sweeping across a heading every {@code cycle} seconds. */
@@ -260,6 +291,18 @@ final class MenuStyle {
         return cw;
     }
 
+    /** How wide {@link #keys} would draw these. */
+    static double keysWidth(Graphics2D g, double s, String[][] groups, String[] labels) {
+        double x = 0;
+        for (int k = 0; k < groups.length; k++) {
+            g.setFont(sans(Font.BOLD, 12 * s));
+            for (String key : groups[k]) x += Math.max(24 * s, g.getFontMetrics().stringWidth(key) + 14 * s) + 5 * s;
+            g.setFont(sans(Font.PLAIN, 13 * s));
+            x += 3 * s + g.getFontMetrics().stringWidth(labels[k]) + (k < groups.length - 1 ? 26 * s : 0);
+        }
+        return x;
+    }
+
     /** A row of key-cap groups, each followed by what it does: {{"W", "S"}, {"ENTER"}} with {"Navigate", "Select"}. */
     static void keys(Graphics2D g, double x, double baseline, double s, String[][] groups, String[] labels) {
         for (int k = 0; k < groups.length; k++) {
@@ -268,6 +311,17 @@ final class MenuStyle {
             shadowed(g, labels[k], x + 3 * s, baseline - 1 * s, new Color(200, 196, 214));
             x += g.getFontMetrics().stringWidth(labels[k]) + 26 * s;
         }
+    }
+
+    /** Ten little bars, lit up to the volume, and the percentage. */
+    static void slider(Graphics2D g, double x, double y, int value, boolean selected, double s) {
+        double bw = 11 * s, bh = 14 * s, gap = 4 * s;
+        for (int k = 0; k < AudioSettings.STEPS; k++) {
+            g.setColor(k < value ? (selected ? GOLD : new Color(205, 190, 150)) : new Color(50, 48, 64, 220));
+            g.fill(new java.awt.geom.RoundRectangle2D.Double(x + k * (bw + gap), y - bh / 2, bw, bh, 3, 3));
+        }
+        g.setFont(MenuStyle.sans(Font.BOLD, 13 * s));
+        MenuStyle.shadowed(g, value * 10 + "%", x + AudioSettings.STEPS * (bw + gap) + 8 * s, y + 5 * s, selected ? GOLD : DIM);
     }
 
     /** A dark glass card with a thin gold border (and, given one, a soft glow of {@code tint} along its top). */
@@ -286,6 +340,11 @@ final class MenuStyle {
         g.setStroke(new BasicStroke(1.3f));
         g.draw(card);
         return card;
+    }
+
+    /** Text centred on {@code cx}, shadowed. */
+    static void centred(Graphics2D g, String text, double cx, double baseline, Color c) {
+        shadowed(g, text, cx - g.getFontMetrics().stringWidth(text) / 2.0, baseline, c);
     }
 
     /** A small tracked-out capital label, gold by default (a card's or a column's title). */

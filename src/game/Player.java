@@ -148,10 +148,10 @@ final class Player {
 
         CommandMenu.Result command;
         if (w.run != null) {
-            // a run has no command menu (skills fire on their own): J attacks, and holding it keeps swinging. ENTER is kept
-            // for the level-up cards, so a held attack can never pick one by accident
+            // a run has no command menu (skills fire on their own): ENTER (or J) attacks, and holding it keeps swinging.
+            // The level-up cards are taken with the number keys, so a held attack can never pick one by accident
             command = CommandMenu.Result.NOTHING;
-            if (in.pressed(KeyEvent.VK_J) || in.down(KeyEvent.VK_J)) attackBuffer = INPUT_BUFFER;
+            if (in.pressed(KeyEvent.VK_ENTER) || in.down(KeyEvent.VK_ENTER) || in.pressed(KeyEvent.VK_J) || in.down(KeyEvent.VK_J)) attackBuffer = INPUT_BUFFER;
         } else {
             // the command menu turns ENTER / arrow presses into "attack" or "cast this spell"
             CommandMenu.Item cursorBefore = menu.cursor;

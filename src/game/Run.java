@@ -63,8 +63,11 @@ final class Run {
     int cards = 3;
     /** Seconds before the cards on screen can be taken: a key already on its way down when they appeared can't pick one. */
     double choiceArm;
-    /** How long the cards ignore ENTER after appearing. */
-    static final double CHOICE_ARM_TIME = 0.45;
+    /** How long the cards ignore their keys after appearing. */
+    static final double CHOICE_ARM_TIME = 0.3;
+    /** The keys that take card 1, 2, 3, 4 (the number row, or the numpad). */
+    private static final int[][] CARD_KEYS = {{KeyEvent.VK_1, KeyEvent.VK_NUMPAD1}, {KeyEvent.VK_2, KeyEvent.VK_NUMPAD2},
+        {KeyEvent.VK_3, KeyEvent.VK_NUMPAD3}, {KeyEvent.VK_4, KeyEvent.VK_NUMPAD4}};
     boolean reviveAvailable, reviveUsed;
 
     // the end
@@ -149,7 +152,7 @@ final class Run {
         w.banner = "STAGE " + (s + 1);
         w.bannerTimer = 3;
         w.notice = w.level.name;
-        w.noticeHint = (s == 0 ? "Hold J to swing your sword.   " : "") + "Survive " + (int) (STAGE_TIME / 60) + " minutes. Then "
+        w.noticeHint = (s == 0 ? "Hold ENTER to swing your sword.   " : "") + "Survive " + (int) (STAGE_TIME / 60) + " minutes. Then "
             + w.level.bossName + " comes for you.";
         w.noticeTimer = 5;
         w.fade = 1;
@@ -678,20 +681,11 @@ final class Run {
     }
 
     /**
-     * A/D (or the arrows) choose, ENTER (or E) takes, R rerolls the cards (a few times a run). The cards can't be taken
-     * for the first {@value #CHOICE_ARM_TIME} seconds.
+     * 1, 2, 3 (and 4, with the Ring of Fortune) take that card; R rerolls them (a few times a run). ENTER is the attack,
+     * so it does nothing here. The cards can't be taken for the first {@value #CHOICE_ARM_TIME} seconds.
      */
     void updateChoices(World w, Input in, double dt) {
         choiceArm = Math.max(0, choiceArm - dt);
-        int n = choices.size();
-        if (in.pressed(KeyEvent.VK_RIGHT) || in.pressed(KeyEvent.VK_D) || in.pressed(KeyEvent.VK_DOWN) || in.pressed(KeyEvent.VK_S)) {
-            choiceCursor = (choiceCursor + 1) % n;
-            w.sound(Snd.MENU_MOVE);
-        }
-        if (in.pressed(KeyEvent.VK_LEFT) || in.pressed(KeyEvent.VK_A) || in.pressed(KeyEvent.VK_UP) || in.pressed(KeyEvent.VK_W)) {
-            choiceCursor = (choiceCursor + n - 1) % n;
-            w.sound(Snd.MENU_MOVE);
-        }
         if (in.pressed(KeyEvent.VK_R)) {
             if (rerolls > 0 && choices.get(0).perk() != null) {
                 rerolls--;
@@ -703,9 +697,13 @@ final class Run {
                 w.sound(Snd.MENU_DENY);
             }
         }
-        if ((in.pressed(KeyEvent.VK_ENTER) || in.pressed(KeyEvent.VK_E)) && choiceArm <= 0) {
-            take(w, choices.get(choiceCursor));
-            in.consume(KeyEvent.VK_ENTER, KeyEvent.VK_E);
+        if (choiceArm > 0) return;
+        for (int i = 0; i < choices.size() && i < CARD_KEYS.length; i++) {
+            if (!in.pressed(CARD_KEYS[i][0]) && !in.pressed(CARD_KEYS[i][1])) continue;
+            choiceCursor = i;
+            take(w, choices.get(i));
+            in.consume(CARD_KEYS[i]);
+            return;
         }
     }
 
@@ -759,6 +757,7 @@ final class Run {
         prof.save(Profile.file());
         delete(file());
         w.state = World.State.RUN_END;
+        w.overTimer = World.OVER_GUARD;
         w.sound(won ? Snd.GAME_CLEARED : Snd.GAME_OVER);
     }
 

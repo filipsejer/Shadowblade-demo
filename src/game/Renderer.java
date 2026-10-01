@@ -47,6 +47,7 @@ final class Renderer {
     private final RunHud runHud = new RunHud();
     private final TitleScreen titleScreen = new TitleScreen();
     private final ArmoryScreen armoryScreen = new ArmoryScreen();
+    private final CampaignScreens campaignScreens = new CampaignScreens();
     private BufferedImage vignetteImage;
 
     void render(World w, Graphics2D g, int width, int height) {
@@ -94,8 +95,8 @@ final class Renderer {
             case CLASSIC -> titleScreen.drawClassic(g, w, width, height);
             case CHAPTER_SELECT -> titleScreen.drawChapters(g, w, width, height);
             case UPGRADE -> drawStationMenu(g, w, width, height);
-            case PAUSE -> { if (w.run != null) runHud.drawRunPause(g, w, width, height); else drawPause(g, w, width, height); }
-            case GAME_OVER -> drawGameOver(g, w, width, height);
+            case PAUSE -> { if (w.run != null) runHud.drawRunPause(g, w, width, height); else campaignScreens.drawPause(g, w, width, height); }
+            case GAME_OVER -> campaignScreens.drawGameOver(g, w, width, height);
             case LEVEL_UP -> runHud.drawChoices(g, w, width, height);
             case RUN_END -> runHud.drawRunEnd(g, w, width, height);
             case ARMORY -> armoryScreen.draw(g, w, width, height);
@@ -209,7 +210,7 @@ final class Renderer {
             g.setFont(f14);
             if (!w.noticeHint.isEmpty()) centered(g, w.noticeHint, width / 2.0, height - 126, Util.alpha(Color.WHITE, fade));
         }
-        if (w.bannerTimer > 0 && w.state != World.State.CLASSIC && w.state != World.State.CHAPTER_SELECT) {
+        if (w.bannerTimer > 0 && w.state == World.State.PLAYING) {                // (not under a pause or death screen)
             g.setFont(f54b);
             centered(g, w.banner, width / 2.0, height * 0.3, Util.alpha(Color.WHITE, Math.min(1, w.bannerTimer)));
         }
@@ -528,102 +529,6 @@ final class Renderer {
         }
         g.setFont(f14);
         centered(g, "W / S  choose      ENTER  buy      ESC  leave", px + pw / 2, py + ph - 24, new Color(190, 190, 200));
-    }
-
-    private void drawPause(Graphics2D g, World w, int width, int height) {
-        Player p = w.player;
-        dim(g, width, height, 190);
-        double cx = width / 2.0;
-        double left = cx - 400;
-        g.setFont(f54b);
-        centered(g, "PAUSED", cx, height * 0.16, Color.WHITE);
-        g.setFont(f14);
-        centered(g, "Press ESC to resume", cx, height * 0.16 + 30, new Color(200, 200, 210));
-
-        double y = height * 0.16 + 84;
-        g.setFont(f18b);
-        g.setColor(Color.WHITE);
-        g.drawString("Magic", (float) left, (float) y);
-        for (Ability a : Ability.values()) {
-            y += 27;
-            int lv = p.spellLevel[a.ordinal()];
-            g.setFont(f14b);
-            if (lv == 0) {
-                g.setColor(new Color(120, 120, 126));
-                g.drawString(a.label + "  -  not learned yet (the Wizard teaches it)", (float) left, (float) y);
-            } else {
-                g.setColor(a.color);
-                g.drawString(a.label + "  Lv " + lv, (float) left, (float) y);
-                g.setFont(f14);
-                g.setColor(new Color(205, 205, 215));
-                g.drawString((int) a.cost(lv) + " MP   " + String.format(Locale.ROOT, "%.1fs", a.cooldown * p.cooldownMult) + " cooldown   -   " + a.blurb,
-                    (float) (left + 190), (float) y);
-            }
-        }
-
-        y += 56;
-        g.setFont(f18b);
-        g.setColor(Color.WHITE);
-        g.drawString("Stats", (float) left, (float) y);
-        g.setFont(f14);
-        g.setColor(new Color(205, 205, 215));
-        String[] lines = {
-            "Combo length:  " + p.comboMax + " hits",
-            "Melee damage:  " + Math.round(p.meleeDamage * p.meleeMult),
-            "Attack speed:  x" + String.format(Locale.ROOT, "%.2f", p.attackSpeed),
-            "Spell power:  x" + String.format(Locale.ROOT, "%.2f", p.spellPower),
-            "Move speed:  " + Math.round(p.moveSpeed),
-            "Roll cooldown:  " + String.format(Locale.ROOT, "%.2fs", p.dodgeCooldown),
-            "Roll distance:  " + Math.round(p.rollDistance()) + " px"
-                + (p.level >= Player.ROLL_BONUS_LEVEL_2 ? "  (level " + Player.ROLL_BONUS_LEVEL_2 + " bonus)"
-                    : p.level >= Player.ROLL_BONUS_LEVEL ? "  (level " + Player.ROLL_BONUS_LEVEL + " bonus, more at " + Player.ROLL_BONUS_LEVEL_2 + ")"
-                    : "  (further at level " + Player.ROLL_BONUS_LEVEL + ")"),
-        };
-        for (int i = 0; i < lines.length; i++) {
-            g.drawString(lines[i], (float) (left + (i / 4) * 260), (float) (y + 28 + (i % 4) * 22));
-        }
-
-        y += 28 + 4 * 22 + 40;
-        g.setFont(f14);
-        g.setColor(new Color(170, 175, 195));
-        g.drawString("UP / DOWN choose a command    ENTER attack or confirm    RIGHT opens the spell list    LEFT goes back",
-            (float) left, (float) y);
-        g.drawString("HOLD SHIFT opens the spell list directly (and keeps it open for repeat casts)", (float) left, (float) (y + 22));
-        g.drawString("WASD move    SPACE roll    TAB lock on    Q release    E talk to a trainer", (float) left, (float) (y + 44));
-
-        y += 92;
-        g.setFont(f18b);
-        g.setColor(Color.WHITE);
-        g.drawString("Sound", (float) left, (float) y);
-        String[] names = {"Music", "Effects"};
-        int[] values = {w.audio.music, w.audio.sfx};
-        for (int i = 0; i < 2; i++) {
-            double ry = y + 30 + i * 26;
-            boolean sel = w.pauseCursor == i;
-            g.setFont(sel ? f14b : f14);
-            g.setColor(sel ? new Color(255, 215, 90) : new Color(205, 205, 215));
-            g.drawString((sel ? "> " : "  ") + names[i], (float) left, (float) ry);
-            StringBuilder bar = new StringBuilder();
-            for (int k = 0; k < AudioSettings.STEPS; k++) bar.append(k < values[i] ? '#' : '-');
-            g.drawString("[" + bar + "]  " + values[i] * 10 + "%", (float) (left + 120), (float) ry);
-        }
-        g.setFont(f14);
-        g.setColor(new Color(170, 175, 195));
-        g.drawString("UP / DOWN choose    LEFT / RIGHT change    M mute" + (w.audio.muted ? "  (sound is off)" : ""), (float) left, (float) (y + 96));
-    }
-
-    private void drawGameOver(Graphics2D g, World w, int width, int height) {
-        dim(g, width, height, 170);
-        double cx = width / 2.0;
-        g.setFont(f54b);
-        centered(g, "YOU DIED", cx, height * 0.36, new Color(255, 90, 90));
-        g.setFont(f18b);
-        int secs = (int) w.time;
-        if (w.tutorial != null) centered(g, "Don't worry, it was only the tutorial. The story starts over.", cx, height * 0.36 + 44, Color.WHITE);
-        else centered(g, w.level.name + "   -   rooms cleared " + w.level.clearedRoomCount() + " / " + w.level.combatRoomCount() + "   -   character level " + w.player.level + "   -   " + w.kills + " kills   -   "
-            + secs / 60 + ":" + String.format(Locale.ROOT, "%02d", secs % 60), cx, height * 0.36 + 44, Color.WHITE);
-        g.setFont(f26b);
-        centered(g, "Press R to try again", cx, height * 0.36 + 100, Util.alpha(Color.WHITE, 0.6 + 0.4 * Math.sin(System.nanoTime() / 3.0e8)));
     }
 
     // ------------------------------------------------------------------ text helpers

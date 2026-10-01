@@ -1,5 +1,7 @@
 package game;
 
+import static game.MenuStyle.DOT;
+
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Font;
@@ -30,14 +32,11 @@ final class RunHud {
     private final Font f14 = new Font(Font.SANS_SERIF, Font.PLAIN, 14);
     private final Font f14b = new Font(Font.SANS_SERIF, Font.BOLD, 14);
     private final Font f16b = new Font(Font.SANS_SERIF, Font.BOLD, 16);
-    private final Font f18b = new Font(Font.SANS_SERIF, Font.BOLD, 18);
     private final Font f22b = new Font(Font.SANS_SERIF, Font.BOLD, 22);
     private final Font f30b = new Font(Font.SANS_SERIF, Font.BOLD, 30);
     private final Font f54b = new Font(Font.SANS_SERIF, Font.BOLD, 54);
-    private final Font f72b = new Font(Font.SANS_SERIF, Font.BOLD, 72);
     private final Minimap minimap = new Minimap();
 
-    private static final Color PANEL = new Color(22, 22, 30, 238);
     private static final Color GOLD = new Color(255, 214, 80);
     private static final Color XP = new Color(90, 190, 255);
     private static final Color DIM_TEXT = new Color(170, 172, 188);
@@ -102,7 +101,7 @@ final class RunHud {
 
         g.setFont(f12);
         g.setColor(new Color(200, 200, 212, 170));
-        String hint = "J  attack (hold)" + (p.rollUnlocked ? "    SPACE  roll" : "") + "    TAB  lock on    ESC  pause";
+        String hint = "ENTER  attack (hold)" + (p.rollUnlocked ? "    SPACE  roll" : "") + "    TAB  lock on    ESC  pause";
         FontMetrics fm = g.getFontMetrics();
         g.drawString(hint, width - fm.stringWidth(hint) - 16, height - 14);
 
@@ -113,7 +112,7 @@ final class RunHud {
             g.setFont(f14);
             if (!w.noticeHint.isEmpty()) centered(g, w.noticeHint, width / 2.0, height - 127, Util.alpha(Color.WHITE, fade));
         }
-        if (w.bannerTimer > 0) {
+        if (w.bannerTimer > 0 && w.state == World.State.PLAYING) {
             g.setFont(f54b);
             centered(g, w.banner, width / 2.0, height * 0.32, Util.alpha(Color.WHITE, Math.min(1, w.bannerTimer)));
         }
@@ -205,58 +204,76 @@ final class RunHud {
 
     // ------------------------------------------------------------------ level-up choices
 
+    private final MenuStyle.Glide pauseGlide = new MenuStyle.Glide();
+
+    /**
+     * A level-up (or a chest): a gold heading, and the cards as dark glass, each tinted along the top in its perk's
+     * colour, with the number key that takes it sitting on its top edge. The keys stay dim for the moment the cards
+     * ignore them after appearing.
+     */
     void drawChoices(Graphics2D g, World w, int width, int height) {
-        dim(g, width, height, 170);
+        MenuStyle.antialias(g);
+        MenuStyle.veil(g, width, height, 150);
         Run run = w.run;
         Player p = w.player;
+        double s = MenuStyle.scale(height), cx = width / 2.0;
         List<Perk.Choice> choices = run.choices;
         int n = choices.size();
-        double cw = n >= 4 ? 236 : 262, ch = 340, gap = 22;
+        double cw = (n >= 4 ? 232 : 258) * s, ch = 336 * s, gap = 22 * s;
         double total = n * cw + (n - 1) * gap;
-        double x0 = (width - total) / 2, y0 = Math.max(120, (height - ch) / 2 - 10);
+        double x0 = (width - total) / 2, y0 = Math.max(150 * s, (height - ch) / 2 + 6 * s);
 
-        g.setFont(f54b);
-        centered(g, run.choiceTitle, width / 2.0, y0 - 44, run.choiceTitle.startsWith("LEVEL") ? GOLD : new Color(255, 170, 80));
-        g.setFont(f16b);
-        String sub = run.choiceTitle.startsWith("LEVEL") ? "Level " + (p.level - run.pendingLevels + 1) + "   -   choose one"
-            : "The chest holds a free upgrade   -   choose one";
-        centered(g, sub, width / 2.0, y0 - 16, new Color(225, 225, 235));
+        boolean level = run.choiceTitle.startsWith("LEVEL");
+        double base = y0 - 58 * s;
+        java.awt.geom.Rectangle2D hb = MenuStyle.headingCentred(g, level ? "LEVEL UP" : "TREASURE", cx, base, 60 * s, s, false).getBounds2D();
+        MenuStyle.ruled(g, level ? "LEVEL " + (p.level - run.pendingLevels + 1) + DOT + "CHOOSE ONE" : "A FREE UPGRADE" + DOT + "CHOOSE ONE",
+            cx, base + 32 * s, hb.getX() - 60 * s, hb.getMaxX() + 60 * s, 15 * s, s);
 
+        java.awt.Composite saved = g.getComposite();
+        java.awt.Composite faded = java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 0.4f);
+        String[] numbers = new String[n];
         for (int i = 0; i < n; i++) {
-            boolean sel = i == run.choiceCursor;
-            double x = x0 + i * (cw + gap), y = y0 - (sel ? 12 : 0);
-            drawCard(g, w, choices.get(i), x, y, cw, ch, sel, p);
+            double x = x0 + i * (cw + gap);
+            drawCard(g, w, choices.get(i), x, y0, cw, ch, p, s);
+            numbers[i] = String.valueOf(i + 1);
+            if (run.choiceArm > 0) g.setComposite(faded);
+            g.setFont(MenuStyle.sans(Font.BOLD, 15 * s));                         // the key that takes this card, on its top edge
+            double capW = 30 * s, capH = 28 * s, capX = x + cw / 2 - capW / 2, capY = y0 - capH / 2;
+            RoundRectangle2D cap = new RoundRectangle2D.Double(capX, capY, capW, capH, 8, 8);
+            g.setColor(new Color(20, 18, 30));
+            g.fill(cap);
+            g.setColor(MenuStyle.GOLD);
+            g.setStroke(new BasicStroke((float) (1.8 * s)));
+            g.draw(cap);
+            MenuStyle.centred(g, numbers[i], capX + capW / 2, capY + capH / 2 + 5.5 * s, Color.WHITE);
+            g.setComposite(saved);
         }
 
-        double fy = y0 + ch + 36;
-        g.setFont(f16b);
-        String reroll = run.rerolls > 0 ? "R  reroll (" + run.rerolls + " left)" : "no rerolls left";
-        centered(g, "A / D  choose       ENTER  take       " + reroll, width / 2.0, fy,
-            run.choiceArm > 0 ? new Color(220, 220, 230, 110) : new Color(220, 220, 230));
-        g.setFont(f12);
-        centered(g, "Skills " + Perk.owned(p, Perk.Kind.SKILL) + " / " + Perk.SKILL_SLOTS + "     Passives " + Perk.owned(p, Perk.Kind.PASSIVE)
-            + " / " + Perk.PASSIVE_SLOTS + "     A maxed skill evolves once you also own its partner passive", width / 2.0, fy + 24, DIM_TEXT);
+        String[][] groups = {numbers, {"R"}};
+        String[] labels = {"Take that card", run.rerolls > 0 ? "Reroll (" + run.rerolls + " left)" : "No rerolls left"};
+        double kw = MenuStyle.keysWidth(g, s, groups, labels), ky = y0 + ch + 44 * s;
+        if (run.choiceArm > 0) g.setComposite(faded);
+        MenuStyle.keys(g, cx - kw / 2, ky, s, groups, labels);
+        g.setComposite(saved);
+        g.setFont(MenuStyle.serif(Font.ITALIC, 14 * s, 0));
+        MenuStyle.centred(g, "Skills " + Perk.owned(p, Perk.Kind.SKILL) + " / " + Perk.SKILL_SLOTS + DOT + "Passives " + Perk.owned(p, Perk.Kind.PASSIVE)
+            + " / " + Perk.PASSIVE_SLOTS + DOT + "a maxed skill evolves once you also own its partner passive", cx, ky + 28 * s, MenuStyle.DIM);
         drawSkillSlots(g, p, height);
     }
 
-    private void drawCard(Graphics2D g, World w, Perk.Choice c, double x, double y, double cw, double ch, boolean sel, Player p) {
+    private void drawCard(Graphics2D g, World w, Perk.Choice c, double x, double y, double cw, double ch, Player p, double s) {
         Perk k = c.perk();
-        Color accent = k == null ? GOLD : c.evolution() ? GOLD : k.color;
-        RoundRectangle2D card = new RoundRectangle2D.Double(x, y, cw, ch, 18, 18);
-        if (sel) {
-            double pulse = 0.5 + 0.5 * Math.sin(w.time * 6 + System.nanoTime() / 2e8);
-            g.setColor(Util.alpha(accent, 0.25 + 0.2 * pulse));
-            g.fill(new RoundRectangle2D.Double(x - 8, y - 8, cw + 16, ch + 16, 24, 24));
+        Color accent = k == null || c.evolution() ? GOLD : k.color;
+        if (c.evolution()) {                                                     // an evolution glows gold
+            double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() / 1.6e8);
+            for (int i = 3; i >= 1; i--) {
+                g.setColor(Util.alpha(MenuStyle.GOLD_DEEP, (0.08 + 0.05 * pulse) * (4 - i) / 3));
+                g.fill(new RoundRectangle2D.Double(x - i * 5 * s, y - i * 5 * s, cw + i * 10 * s, ch + i * 10 * s, 20 + i * 8, 20 + i * 8));
+            }
         }
-        g.setColor(new Color(26, 26, 36, 245));
-        g.fill(card);
-        Shape saved = g.getClip();
-        g.clip(card);
-        g.setPaint(new GradientPaint((float) x, (float) y, Util.alpha(accent, 0.55), (float) x, (float) (y + 120), Util.alpha(accent, 0.0)));
-        g.fill(new Rectangle2D.Double(x, y, cw, 120));
-        g.setClip(saved);
-        g.setColor(sel ? Color.WHITE : Util.alpha(accent, 0.7));
-        g.setStroke(new BasicStroke(sel ? 3.5f : 2f));
+        RoundRectangle2D card = MenuStyle.card(g, x, y, cw, ch, accent);
+        g.setColor(Util.alpha(accent, c.evolution() ? 0.95 : 0.55));
+        g.setStroke(new BasicStroke((float) ((c.evolution() ? 2.4 : 1.6) * s)));
         g.draw(card);
 
         String tag, name, text;
@@ -272,39 +289,42 @@ final class RunHud {
             else if (now == 0) tag = k.kind == Perk.Kind.SKILL ? "NEW SKILL" : "NEW PASSIVE";
             else tag = "LEVEL " + now + "  >  " + c.rank();
         }
+        g.setFont(MenuStyle.caps(11 * s));
+        MenuStyle.centred(g, tag, x + cw / 2, y + 32 * s, c.evolution() ? GOLD : tag.startsWith("NEW") ? new Color(150, 255, 170) : new Color(230, 226, 240));
 
-        g.setFont(f12b);
-        centered(g, tag, x + cw / 2, y + 26, c.evolution() ? GOLD : tag.startsWith("NEW") ? new Color(140, 255, 160) : new Color(230, 230, 240));
-        double icx = x + cw / 2, icy = y + 88;
-        g.setColor(new Color(12, 12, 18, 230));
-        g.fill(new Ellipse2D.Double(icx - 40, icy - 40, 80, 80));
-        g.setColor(Util.alpha(accent, 0.9));
-        g.setStroke(new BasicStroke(3f));
-        g.draw(new Ellipse2D.Double(icx - 40, icy - 40, 80, 80));
-        if (k != null) drawIcon(g, k, icx, icy, 56, c.evolution());
+        double icx = x + cw / 2, icy = y + 92 * s, r = 40 * s;                   // the medallion
+        g.setColor(new Color(10, 10, 18, 235));
+        g.fill(new Ellipse2D.Double(icx - r, icy - r, r * 2, r * 2));
+        g.setColor(Util.alpha(accent, 0.95));
+        g.setStroke(new BasicStroke((float) (2.6 * s)));
+        g.draw(new Ellipse2D.Double(icx - r, icy - r, r * 2, r * 2));
+        g.setColor(new Color(255, 214, 120, c.evolution() ? 200 : 80));
+        g.setStroke(new BasicStroke((float) (1.2 * s)));
+        g.draw(new Ellipse2D.Double(icx - r - 6 * s, icy - r - 6 * s, (r + 6 * s) * 2, (r + 6 * s) * 2));
+        if (k != null) drawIcon(g, k, icx, icy, 56 * s, c.evolution());
         else drawCoinIcon(g, icx, icy, c.rank() == -1);
 
-        g.setFont(f22b);
-        centered(g, name, x + cw / 2, y + 160, Color.WHITE);
+        g.setFont(MenuStyle.serif(Font.BOLD, 23 * s, 0.03));
+        MenuStyle.centred(g, name, x + cw / 2, y + 170 * s, c.evolution() ? GOLD : Color.WHITE);
         if (k != null) {
-            g.setFont(f12);
-            centered(g, c.evolution() ? "evolved " + k.label : k.kind == Perk.Kind.SKILL ? "skill - fires by itself" : "passive", x + cw / 2, y + 178, DIM_TEXT);
+            g.setFont(MenuStyle.caps(9.5 * s));
+            MenuStyle.centred(g, c.evolution() ? "EVOLVED " + k.label.toUpperCase() : k.kind == Perk.Kind.SKILL ? "SKILL" + DOT + "FIRES BY ITSELF" : "PASSIVE",
+                x + cw / 2, y + 190 * s, MenuStyle.DIM);
         }
-        g.setFont(f14);
-        g.setColor(new Color(235, 235, 242));
-        wrapped(g, text, x + 20, y + 206, cw - 40, 19, true);
+        g.setFont(MenuStyle.sans(Font.PLAIN, 14 * s));
+        g.setColor(new Color(232, 230, 240));
+        wrapped(g, text, x + 20 * s, y + 222 * s, cw - 40 * s, 19 * s, true);
 
-        if (k != null && !c.evolution()) {                                  // rank pips
+        if (k != null && !c.evolution()) {                                       // rank diamonds: held, this one, still to come
             int max = k.maxRank;
-            double pw = 14, pg = 6, px0 = x + cw / 2 - (max * pw + (max - 1) * pg) / 2, py = y + ch - 28;
+            double step = 18 * s, px0 = x + cw / 2 - (max - 1) * step / 2, py = y + ch - 26 * s;
             for (int i = 0; i < max; i++) {
-                RoundRectangle2D pip = new RoundRectangle2D.Double(px0 + i * (pw + pg), py, pw, 8, 4, 4);
-                g.setColor(i < c.rank() - 1 ? accent : i == c.rank() - 1 ? Color.WHITE : new Color(60, 60, 72));
-                g.fill(pip);
+                Color pc = i < c.rank() - 1 ? accent : i == c.rank() - 1 ? Color.WHITE : new Color(62, 60, 78);
+                MenuStyle.diamond(g, px0 + i * step, py, (i == c.rank() - 1 ? 6 : 5) * s, pc);
             }
             if (k.evolvable() && c.rank() == k.maxRank) {
-                g.setFont(f12);
-                centered(g, "evolves with " + k.partner().label, x + cw / 2, py - 8, Util.alpha(GOLD, 0.85));
+                g.setFont(MenuStyle.serif(Font.ITALIC, 12 * s, 0));
+                MenuStyle.centred(g, "evolves with " + k.partner().label, x + cw / 2, py - 14 * s, Util.alpha(GOLD, 0.9));
             }
         }
     }
@@ -316,138 +336,212 @@ final class RunHud {
 
     // ------------------------------------------------------------------ a run's pause menu
 
+    /**
+     * A run's pause menu, laid out like the title screens: the heading and where you are on the left, the rows (the
+     * volumes as sliders), and a card on the right with the build you've put together so far.
+     */
     void drawRunPause(Graphics2D g, World w, int width, int height) {
-        dim(g, width, height, 190);
+        MenuStyle.antialias(g);
+        MenuStyle.veil(g, width, height, 165);
+        g.setPaint(new GradientPaint(0, 0, new Color(6, 6, 16, 150), (float) (width * 0.55), 0, new Color(6, 6, 16, 0)));
+        g.fillRect(0, 0, (int) (width * 0.55) + 1, height);
         Run run = w.run;
         Player p = w.player;
-        double cx = width / 2.0;
-        g.setFont(f54b);
-        centered(g, "PAUSED", cx, height * 0.14, Color.WHITE);
-        g.setFont(f14);
-        centered(g, "Stage " + (run.stage + 1) + "   -   " + Run.clock(run.stageTime) + "   -   level " + p.level + "   -   " + w.kills + " kills   -   "
-            + run.gold + " gold   -   " + run.loot.size() + " item" + (run.loot.size() == 1 ? "" : "s") + " found", cx, height * 0.14 + 30, new Color(210, 210, 222));
+        double s = MenuStyle.scale(height), x0 = MenuStyle.left(width);
 
-        double rowW = 360, rowH = 48, gap = 10, y0 = height * 0.14 + 64;
-        for (int i = 0; i < World.RUN_PAUSE.length; i++) {
-            boolean sel = w.pauseCursor == i;
-            String label = World.RUN_PAUSE[i];
-            String hint = switch (i) {
-                case 0 -> "back to the fight";
-                case 1 -> volume(w.audio.music) + "   LEFT / RIGHT";
-                case 2 -> volume(w.audio.sfx) + "   LEFT / RIGHT";
-                case 3 -> "CONTINUE on the main menu picks it up again";
-                default -> w.confirmAbandon ? "press ENTER again: the run ends, you keep your loot" : "end the run now (you keep what you found)";
-            };
-            menuRow(g, cx, y0 + i * (rowH + gap), rowW, rowH, label, hint, sel, i == 4 && w.confirmAbandon ? new Color(255, 120, 110) : null);
-        }
+        double base = height * 0.2 + 12 * s;
+        java.awt.geom.Rectangle2D hb = MenuStyle.heading(g, "PAUSED", x0, base, 76 * s, s).getBounds2D();
+        MenuStyle.ruled(g, "STAGE " + (run.stage + 1) + DOT + Run.clock(run.stageTime), hb.getCenterX(), base + 36 * s, hb.getX(), hb.getMaxX(), 17 * s, s);
+        g.setFont(MenuStyle.serif(Font.ITALIC, 16 * s, 0));
+        String status = "Level " + p.level + DOT + w.kills + " kills" + DOT + run.gold + " gold" + DOT + run.loot.size() + " item" + (run.loot.size() == 1 ? "" : "s") + " found";
+        MenuStyle.shadowed(g, status, x0, base + 66 * s, new Color(214, 206, 228, 220));
 
-        // what you've built so far
-        double y = y0 + World.RUN_PAUSE.length * (rowH + gap) + 20;
-        g.setFont(f16b);
-        centered(g, "YOUR BUILD", cx, y, Color.WHITE);
-        List<String> lines = new ArrayList<>();
-        for (Perk k : Perk.values()) {
-            int r = p.perk[k.ordinal()];
-            if (r > 0) lines.add(k.title(r) + (r >= Perk.EVOLVED ? "  (evolved)" : "  " + r + "/" + k.maxRank));
+        double y0 = base + 128 * s, rowH = 52 * s, rowSize = 27 * s;
+        int sel = w.pauseCursor;
+        boolean warn = sel == 4 && w.confirmAbandon;
+        String[] details = {null, null, null, "saved for CONTINUE", null};
+        MenuStyle.rows(g, pauseGlide, World.RUN_PAUSE, details, null, sel, warn, x0, y0, rowH, rowSize, 470 * s, s, w.time);
+        g.setFont(MenuStyle.serif(Font.BOLD, rowSize, 0.08));                    // the volume sliders, after their labels
+        FontMetrics fm = g.getFontMetrics();
+        int[] volumes = {w.audio.music, w.audio.sfx};
+        for (int i = 1; i <= 2; i++) {
+            double lx = x0 + pauseGlide.slide(i) + fm.stringWidth(World.RUN_PAUSE[i]) + 22 * s, ly = y0 + i * rowH + rowH * 0.18 - 9 * s;
+            MenuStyle.slider(g, lx, ly, volumes[i - 1], sel == i, s);
         }
-        if (lines.isEmpty()) lines.add("just your sword");
-        g.setFont(f12);
-        int cols = 3;
-        double colW = 250;
-        for (int i = 0; i < lines.size(); i++) {
-            double lx = cx - colW * cols / 2.0 + (i % cols) * colW + 10;
-            g.setColor(new Color(215, 215, 228));
-            g.drawString(lines.get(i), (float) lx, (float) (y + 22 + (i / cols) * 17));
-        }
-        double sy = y + 22 + ((lines.size() + cols - 1) / cols) * 17 + 14;
-        g.setFont(f12);
-        centered(g, String.format(Locale.ROOT, "Damage x%.2f   Skill power x%.2f   Attack speed x%.2f   Crit %d%%   Armor %d%%   Move %d   Pickup range %d   Combo %d hits",
-            p.meleeMult, p.spellPower, p.attackSpeed, (int) Math.round(p.critChance * 100), (int) Math.round(p.armor * 100), Math.round(p.moveSpeed), Math.round(p.magnet), p.comboMax),
-            cx, sy, DIM_TEXT);
+        String[] info = {
+            "Back to the fight.",
+            "The music's volume. LEFT and RIGHT change it; M mutes everything.",
+            "The volume of the sound effects. LEFT and RIGHT change it.",
+            "Save this run and go back to the main menu. CONTINUE picks it up where you left off.",
+            warn ? "Press ENTER again to end the run. You keep the gold and the items you've found." : "End the run here. You keep the gold and the items you've found.",
+        };
+        MenuStyle.infoLine(g, info[sel], x0, y0 + World.RUN_PAUSE.length * rowH + 12 * s, 380 * s, s, warn);
+        MenuStyle.keys(g, x0, height - 30 * s, s, new String[][]{{"W", "S"}, {"A", "D"}, {"ENTER"}, {"ESC"}}, new String[]{"Navigate", "Volume", "Select", "Resume"});
+        drawBuildCard(g, p, width, height, s);
     }
 
-    private static String volume(int v) {
-        StringBuilder bar = new StringBuilder();
-        for (int k = 0; k < AudioSettings.STEPS; k++) bar.append(k < v ? '#' : '-');
-        return "[" + bar + "]  " + v * 10 + "%";
+    /** The pause menu's right-hand card: your skills and passives (with ranks), and what they add up to. */
+    private void drawBuildCard(Graphics2D g, Player p, int width, int height, double s) {
+        double cw = 372 * s, ch = 330 * s, x = width - cw - 40 * s, y = (height - ch) / 2 + 20 * s;     // (sized to what's in it)
+        MenuStyle.card(g, x, y, cw, ch, null);
+        double px = x + 20 * s, py = y + 28 * s;
+        MenuStyle.label(g, "YOUR BUILD", px, py, s, GOLD);
+        MenuStyle.label(g, "SKILLS", px, py + 30 * s, s, MenuStyle.DIM);
+        double sx = px, sy = py + 42 * s;
+        int skills = 0;
+        for (Perk k : Perk.values()) {
+            if (k.kind != Perk.Kind.SKILL || p.perk[k.ordinal()] == 0) continue;
+            slot(g, k, p.perk[k.ordinal()], sx, sy, 50 * s, 0);
+            sx += 56 * s;
+            skills++;
+        }
+        if (skills == 0) {
+            g.setFont(MenuStyle.serif(Font.ITALIC, 14 * s, 0));
+            MenuStyle.shadowed(g, "Only your sword, so far.", px, sy + 30 * s, MenuStyle.DIM);
+        }
+        MenuStyle.label(g, "PASSIVES", px, sy + 76 * s, s, MenuStyle.DIM);
+        sx = px;
+        double sy2 = sy + 88 * s;
+        int passives = 0;
+        for (Perk k : Perk.values()) {
+            if (k.kind != Perk.Kind.PASSIVE || p.perk[k.ordinal()] == 0) continue;
+            slot(g, k, p.perk[k.ordinal()], sx, sy2, 44 * s, 0);
+            sx += 50 * s;
+            passives++;
+        }
+        if (passives == 0) {
+            g.setFont(MenuStyle.serif(Font.ITALIC, 14 * s, 0));
+            MenuStyle.shadowed(g, "None yet.", px, sy2 + 28 * s, MenuStyle.DIM);
+        }
+
+        double ty = sy2 + 82 * s;
+        g.setColor(new Color(255, 214, 120, 60));
+        g.setStroke(new BasicStroke(1f));
+        g.draw(new java.awt.geom.Line2D.Double(px, ty - 18 * s, x + cw - 20 * s, ty - 18 * s));
+        String[][] stats = {
+            {"Melee damage", String.format(Locale.ROOT, "x%.2f", p.meleeMult)}, {"Skill power", String.format(Locale.ROOT, "x%.2f", p.spellPower)},
+            {"Attack speed", String.format(Locale.ROOT, "x%.2f", p.attackSpeed)}, {"Combo", p.comboMax + " hits"},
+            {"Crit chance", Math.round(p.critChance * 100) + "%"}, {"Damage taken", p.armor > 0 ? "-" + Math.round(p.armor * 100) + "%" : "normal"},
+            {"Move speed", String.valueOf(Math.round(p.moveSpeed))}, {"Pickup range", String.valueOf(Math.round(p.magnet))},
+        };
+        double col = (cw - 40 * s) / 2;
+        for (int i = 0; i < stats.length; i++) {
+            double lx = px + (i % 2) * col, ly = ty + (i / 2) * 22 * s;
+            g.setFont(MenuStyle.sans(Font.PLAIN, 13 * s));
+            MenuStyle.shadowed(g, stats[i][0], lx, ly, MenuStyle.DIM);
+            g.setFont(MenuStyle.sans(Font.BOLD, 13 * s));
+            FontMetrics fm = g.getFontMetrics();
+            MenuStyle.shadowed(g, stats[i][1], lx + col - 14 * s - fm.stringWidth(stats[i][1]), ly, MenuStyle.TEXT);
+        }
     }
 
     // ------------------------------------------------------------------ the end of a run
 
+    /**
+     * The results: VICTORY in gold or DEFEATED in blood red, a row of stat tiles, the gold you bring home, and every
+     * item found as a small card tinted in its rarity.
+     */
     void drawRunEnd(Graphics2D g, World w, int width, int height) {
-        dim(g, width, height, 205);
+        MenuStyle.antialias(g);
+        MenuStyle.veil(g, width, height, 190);
         Run run = w.run;
         Player p = w.player;
-        double cx = width / 2.0;
-        g.setFont(f72b);
-        centered(g, run.victory ? "VICTORY!" : "DEFEATED", cx, height * 0.15, run.victory ? GOLD : new Color(255, 90, 90));
-        g.setFont(f16b);
-        centered(g, run.victory ? "All three bosses have fallen. The portal takes you home." : "You fell on stage " + (run.stage + 1) + ". What you found is yours to keep.",
-            cx, height * 0.15 + 34, Color.WHITE);
+        double s = MenuStyle.scale(height), cx = width / 2.0;
 
-        double y = height * 0.15 + 76;
-        String[] stats = {
-            "Stage reached   " + (run.stage + 1) + " / " + Run.STAGES,
-            "Time survived   " + Run.clock(run.runTime),
-            "Character level   " + p.level,
-            "Kills   " + w.kills,
-            "Elites slain   " + run.elitesKilled,
-            "Bosses slain   " + run.bossesKilled,
+        double base = height * 0.17 + 8 * s;
+        java.awt.geom.Rectangle2D hb = MenuStyle.headingCentred(g, run.victory ? "VICTORY" : "DEFEATED", cx, base, 80 * s, s, !run.victory).getBounds2D();
+        MenuStyle.ruled(g, run.victory ? "ALL THREE BOSSES HAVE FALLEN" : "FALLEN ON STAGE " + (run.stage + 1), cx, base + 38 * s,
+            hb.getX() - 80 * s, hb.getMaxX() + 80 * s, 16 * s, s);
+        g.setFont(MenuStyle.serif(Font.ITALIC, 17 * s, 0));
+        MenuStyle.centred(g, run.victory ? "The portal takes you home, and everything you found comes with you." : "The horde wins this time. Everything you found is yours to keep.",
+            cx, base + 68 * s, new Color(214, 206, 228, 225));
+
+        // the numbers, as a row of tiles
+        String[][] tiles = {
+            {(run.stage + 1) + " / " + Run.STAGES, "STAGE"}, {Run.clock(run.runTime), "TIME"}, {String.valueOf(p.level), "LEVEL"},
+            {String.valueOf(w.kills), "KILLS"}, {String.valueOf(run.elitesKilled), "ELITES"}, {String.valueOf(run.bossesKilled), "BOSSES"},
         };
-        g.setFont(f16b);
-        for (int i = 0; i < stats.length; i++) {
-            double lx = cx - 330 + (i % 3) * 230;
-            g.setColor(new Color(225, 225, 235));
-            g.drawString(stats[i], (float) lx, (float) (y + (i / 3) * 26));
+        double tw = 112 * s, ty = base + 104 * s, tx0 = cx - tiles.length * tw / 2;
+        for (int i = 0; i < tiles.length; i++) {
+            double tcx = tx0 + i * tw + tw / 2;
+            g.setFont(MenuStyle.serif(Font.BOLD, 30 * s, 0.02));
+            MenuStyle.centred(g, tiles[i][0], tcx, ty + 28 * s, Color.WHITE);
+            g.setFont(MenuStyle.caps(10 * s));
+            MenuStyle.centred(g, tiles[i][1], tcx, ty + 48 * s, MenuStyle.DIM);
+            if (i > 0) {
+                g.setColor(new Color(255, 214, 120, 70));
+                g.fill(new Rectangle2D.Double(tx0 + i * tw, ty + 6 * s, 1, 44 * s));
+            }
         }
-        y += 70;
-        g.setFont(f22b);
-        centered(g, "+" + run.gold + " gold", cx, y, GOLD);
-        y += 36;
 
+        // the gold you bring home
+        double gy = ty + 94 * s;
+        g.setFont(MenuStyle.serif(Font.BOLD, 26 * s, 0.03));
+        String goldText = "+" + run.gold + " gold";
+        FontMetrics gm = g.getFontMetrics();
+        double gw = gm.stringWidth(goldText) + 30 * s;
+        Art.frame("run.coin", System.nanoTime() / 1e9, 6).draw(g, cx - gw / 2 + 8 * s, gy - 8 * s, 3.4 * s, false);
+        MenuStyle.shadowed(g, goldText, cx - gw / 2 + 30 * s, gy, GOLD);
+
+        // the loot
         List<Item> all = new ArrayList<>(run.loot);
         all.addAll(run.bonusLoot);
-        g.setFont(f18b);
-        centered(g, all.isEmpty() ? "No items found this time" : "LOOT", cx, y, Color.WHITE);
-        y += 14;
-        int cols = Math.min(3, Math.max(1, all.size()));
-        double colW = 300;
-        for (int i = 0; i < all.size() && i < 12; i++) {
-            Item it = all.get(i);
-            double ix = cx - cols * colW / 2 + (i % cols) * colW, iy = y + (i / cols) * 58;
-            itemChip(g, it, ix + 6, iy, colW - 12, 50, run.bonusLoot.contains(it) ? (run.victory ? "bonus" : "consolation") : null);
+        double ly = gy + 36 * s;
+        if (all.isEmpty()) {
+            g.setFont(MenuStyle.serif(Font.ITALIC, 16 * s, 0));
+            MenuStyle.centred(g, "No items found this time. Elites and bosses carry them.", cx, ly + 20 * s, MenuStyle.DIM);
+            ly += 40 * s;
+        } else {
+            MenuStyle.ruled(g, "LOOT", cx, ly + 8 * s, cx - 300 * s, cx + 300 * s, 14 * s, s);
+            ly += 24 * s;
+            int cols = Math.min(3, all.size());
+            double colW = 318 * s, rowH = 62 * s;
+            int shown = Math.min(9, all.size());
+            for (int i = 0; i < shown; i++) {
+                Item it = all.get(i);
+                double ix = cx - cols * colW / 2 + (i % cols) * colW, iy = ly + (i / cols) * rowH;
+                itemChip(g, it, ix + 6 * s, iy, colW - 12 * s, rowH - 10 * s, run.bonusLoot.contains(it) ? (run.victory ? "BONUS" : "CONSOLATION") : null, s);
+            }
+            if (all.size() > shown) {
+                g.setFont(MenuStyle.serif(Font.ITALIC, 14 * s, 0));
+                MenuStyle.centred(g, "and " + (all.size() - shown) + " more in the Armory", cx, ly + ((shown + cols - 1) / cols) * rowH + 10 * s, MenuStyle.DIM);
+            }
+            ly += ((shown + cols - 1) / cols) * rowH + (all.size() > shown ? 20 * s : 0);
         }
-        y += ((Math.min(12, all.size()) + cols - 1) / cols) * 58 + 18;
         if (!run.records.isEmpty()) {
-            g.setFont(f16b);
-            centered(g, "NEW RECORD:  " + String.join("   -   ", run.records), cx, y, new Color(140, 240, 160));
-            y += 28;
+            g.setFont(MenuStyle.caps(12 * s));
+            String rec = "NEW RECORD" + DOT + String.join(DOT, run.records).toUpperCase();
+            double rw = g.getFontMetrics().stringWidth(rec);
+            MenuStyle.diamond(g, cx - rw / 2 - 14 * s, ly + 10 * s, 4.5 * s, new Color(140, 240, 160));
+            MenuStyle.diamond(g, cx + rw / 2 + 14 * s, ly + 10 * s, 4.5 * s, new Color(140, 240, 160));
+            MenuStyle.centred(g, rec, cx, ly + 14 * s, new Color(140, 240, 160));
         }
-        g.setFont(f22b);
-        centered(g, "ENTER  back to the main menu", cx, Math.max(y + 20, height - 50), Util.alpha(Color.WHITE, 0.6 + 0.4 * Math.sin(System.nanoTime() / 3.0e8)));
+        String[][] groups = {{"ENTER"}};
+        String[] labels = {"Back to the main menu"};
+        java.awt.Composite saved = g.getComposite();
+        if (w.overTimer > 0) g.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 0.35f));   // not yet
+        MenuStyle.keys(g, cx - MenuStyle.keysWidth(g, s, groups, labels) / 2, height - 30 * s, s, groups, labels);
+        g.setComposite(saved);
     }
 
-    /** A compact item row: icon, name in its rarity colour, slot and first stat line. */
-    private void itemChip(Graphics2D g, Item it, double x, double y, double w, double h, String note) {
-        RoundRectangle2D box = new RoundRectangle2D.Double(x, y, w, h, 10, 10);
-        g.setColor(new Color(28, 28, 38, 235));
-        g.fill(box);
-        g.setColor(Util.alpha(it.rarity.color, 0.8));
-        g.setStroke(new BasicStroke(2f));
-        g.draw(box);
-        Art.frames("item." + it.slot.name().toLowerCase())[0].draw(g, x + 26, y + h / 2, 2, false);
-        g.setFont(f14b);
-        g.setColor(it.rarity.color);
-        g.drawString(it.name, (float) (x + 52), (float) (y + 20));
-        if (note != null) {                                                   // a bonus item: a small tag in the corner
-            g.setFont(f12b);
+    /** A found item as a small glass card: its icon in a slot frame, its name in its rarity colour, what it is and its main stat. */
+    private void itemChip(Graphics2D g, Item it, double x, double y, double w, double h, String note, double s) {
+        MenuStyle.card(g, x, y, w, h, it.rarity.color);
+        double box = h - 14 * s;
+        TitleScreen.slotBox(g, it, it.slot, x + 7 * s, y + 7 * s, box, s);
+        double tx = x + box + 18 * s;
+        g.setFont(MenuStyle.sans(Font.BOLD, 14 * s));
+        MenuStyle.shadowed(g, it.name, tx, y + h / 2 - 3 * s, it.rarity.color);
+        g.setFont(MenuStyle.caps(9 * s));
+        MenuStyle.shadowed(g, it.rarity.label.toUpperCase(), tx, y + h / 2 + 12 * s, MenuStyle.DIM);          // (the icon says which slot)
+        if (note != null) {
             FontMetrics fm = g.getFontMetrics();
-            g.setColor(GOLD);
-            g.drawString(note.toUpperCase(), (float) (x + w - fm.stringWidth(note.toUpperCase()) - 10), (float) (y + 20));
+            MenuStyle.shadowed(g, note, x + w - 10 * s - fm.stringWidth(note), y + 16 * s, GOLD);
         }
-        g.setFont(f12);
-        g.setColor(DIM_TEXT);
-        g.drawString(it.rarity.label + " " + it.slot.label.toLowerCase() + "  -  " + it.lines().get(0), (float) (x + 52), (float) (y + 38));
+        g.setFont(MenuStyle.sans(Font.PLAIN, 12 * s));
+        FontMetrics fm = g.getFontMetrics();
+        String stat = it.lines().get(0);
+        MenuStyle.shadowed(g, stat, x + w - 10 * s - fm.stringWidth(stat), y + h / 2 + 12 * s, new Color(200, 228, 200));
     }
 
     // ------------------------------------------------------------------ perk icons
@@ -465,7 +559,7 @@ final class RunHud {
         BasicStroke thick = new BasicStroke(3.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
         BasicStroke thin = new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
         if (evolved) {
-            g.setColor(new Color(255, 214, 80, 120));
+            g.setColor(new Color(255, 214, 80, 70));
             g.fill(new Ellipse2D.Double(-16, -16, 32, 32));
         }
         switch (k) {
@@ -710,30 +804,11 @@ final class RunHud {
 
     // ------------------------------------------------------------------ helpers
 
-    private void dim(Graphics2D g, int width, int height, int alpha) {
-        g.setColor(new Color(0, 0, 0, alpha));
-        g.fillRect(0, 0, width, height);
-    }
-
     private void bar(Graphics2D g, double x, double y, double w, double h, double frac, Color fill) {
         g.setColor(new Color(20, 20, 22, 210));
         g.fill(new Rectangle2D.Double(x - 1.5, y - 1.5, w + 3, h + 3));
         g.setColor(fill);
         g.fill(new Rectangle2D.Double(x, y, w * Util.clamp(frac, 0, 1), h));
-    }
-
-    /** One row of a keyboard menu: a pill with a title and a hint; {@code override} recolours the title (disabled, warning). */
-    private void menuRow(Graphics2D g, double cx, double y, double w, double h, String title, String hint, boolean selected, Color override) {
-        RoundRectangle2D row = new RoundRectangle2D.Double(cx - w / 2, y, w, h, 14, 14);
-        g.setColor(selected ? new Color(52, 66, 104, 240) : new Color(24, 24, 30, 220));
-        g.fill(row);
-        g.setColor(selected ? Color.WHITE : new Color(95, 100, 125));
-        g.setStroke(new BasicStroke(selected ? 3f : 1.8f));
-        g.draw(row);
-        g.setFont(f22b);
-        centered(g, title, cx, y + h * 0.5 + 3, override != null ? override : selected ? new Color(255, 225, 120) : new Color(200, 205, 220));
-        g.setFont(f12);
-        centered(g, hint, cx, y + h - 9, selected ? new Color(220, 220, 230) : new Color(140, 140, 150));
     }
 
     private void centered(Graphics2D g, String s, double cx, double baseline, Color c) {

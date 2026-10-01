@@ -61,6 +61,12 @@ final class World {
     boolean confirmSalvage;
     /** A run's pause menu: an abandon waiting for its confirming press. */
     boolean confirmAbandon;
+    /**
+     * Counts down on the results and "you died" screens, which ignore every key until it runs out: an attack tapped
+     * (ENTER) just as you fall mustn't dismiss them before they've been seen.
+     */
+    double overTimer;
+    static final double OVER_GUARD = 1.0;
 
     Enemy lockTarget;
     double camX, camY;
@@ -192,6 +198,7 @@ final class World {
 
     void update(double dt, Input in) {
         shake *= Math.exp(-9 * dt);
+        overTimer = Math.max(0, overTimer - dt);
         fade = Math.max(0, fade - dt / 0.9);
         if (in.pressed(KeyEvent.VK_M)) audio.toggleMute();
         switch (state) {
@@ -205,14 +212,14 @@ final class World {
             case ARMORY -> { animateTitleScene(dt); updateArmory(in); }
             case RUN_END -> {
                 updateEffects(dt);
-                if (in.pressed(KeyEvent.VK_ENTER) || in.pressed(KeyEvent.VK_ESCAPE) || in.pressed(KeyEvent.VK_SPACE)) {
+                if (overTimer <= 0 && (in.pressed(KeyEvent.VK_ENTER) || in.pressed(KeyEvent.VK_ESCAPE) || in.pressed(KeyEvent.VK_SPACE))) {
                     showTitle();
                     sound(Snd.MENU_BACK);
                 }
             }
             case GAME_OVER -> {
                 updateEffects(dt);
-                if (in.pressed(KeyEvent.VK_R) || in.pressed(KeyEvent.VK_ENTER)) {
+                if (overTimer <= 0 && (in.pressed(KeyEvent.VK_R) || in.pressed(KeyEvent.VK_ENTER))) {
                     boolean again = tutorial != null;          // dying in the tutorial starts the tutorial over; later deaths go to level 1
                     reset();
                     if (again) beginTutorial();
@@ -628,6 +635,7 @@ final class World {
         if (run != null) run.maybeOpenChoices(this);
         if (player.hp <= 0) {
             state = State.GAME_OVER;
+            overTimer = OVER_GUARD;
             sound(Snd.GAME_OVER);
             for (int i = 0; i < 24; i++) {
                 effects.add(Effect.spark(player.x, player.y, rng.nextDouble() * Math.PI * 2,
