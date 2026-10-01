@@ -10,11 +10,15 @@ import java.util.Map;
 /**
  * One frame of pixel art plus an anchor: the pixel of the image that lands on the position you draw it at (usually
  * the character's feet). Frames are drawn scaled up with nearest-neighbour so the pixels stay crisp.
+ *
+ * {@link #k} is the size of this sprite's pixels relative to the code-painted art's: 1 for those, and less for the
+ * finer imported art (see {@link ImportedArt}), so callers can keep drawing everything at {@link Art#SCALE}.
  */
 final class Sprite {
     final BufferedImage img;
     final int w, h;
     final int ax, ay;     // anchor, in image pixels
+    final double k;       // pixel size relative to the code-painted art
     private final Map<Integer, BufferedImage> silhouettes = new HashMap<>();
 
     Sprite(PixelCanvas canvas, int ax, int ay) {
@@ -23,7 +27,20 @@ final class Sprite {
         this.h = canvas.h;
         this.ax = ax;
         this.ay = ay;
+        this.k = 1;
     }
+
+    Sprite(BufferedImage img, int ax, int ay, double k) {
+        this.img = img;
+        this.w = img.getWidth();
+        this.h = img.getHeight();
+        this.ax = ax;
+        this.ay = ay;
+        this.k = k;
+    }
+
+    /** How far the sprite reaches above its anchor, in world units when drawn at {@code scale}. */
+    double above(double scale) { return ay * k * scale; }
 
     /** Draws with the anchor at world (x, y). {@code flip} mirrors it left-right around the anchor. */
     void draw(Graphics2D g, double x, double y, double scale, boolean flip) {
@@ -58,6 +75,7 @@ final class Sprite {
         java.awt.Composite savedComposite = g.getComposite();
         g.translate(Math.round(x), Math.round(y));
         if (angle != 0) g.rotate(angle);
+        scale *= k;
         g.scale(flip ? -scale : scale, scale);
         if (alpha < 1f) g.setComposite(AlphaComposite.SrcOver.derive(Math.max(0f, alpha)));
         g.drawImage(image, flip ? -ax - 1 : -ax, -ay, null);     // flipped: the anchor pixel stays in the same cell, so turning doesn't shift the sprite

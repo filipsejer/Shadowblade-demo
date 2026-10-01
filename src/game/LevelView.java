@@ -34,7 +34,7 @@ final class LevelView {
 
     private record Prop(Sprite sprite, double x, double y, boolean flip, int glow) {
         boolean touches(Rectangle2D v) {
-            double s = Art.SCALE;
+            double s = Art.SCALE * sprite.k;
             return v.intersects(x - sprite.ax * s, y - sprite.ay * s, sprite.w * s, sprite.h * s);
         }
     }
@@ -211,7 +211,7 @@ final class LevelView {
     private static BufferedImage[] tilesAt(Level lv, ThemeArt art, double x, double y) {
         for (Level.Room r : lv.rooms) {
             for (Rectangle2D.Double p : r.parts) {
-                if (p.contains(x, y)) return r.gated ? art.boss : r.state == Level.Room.State.SAFE ? art.plaza : art.ground;
+                if (p.contains(x, y)) return r.state == Level.Room.State.SAFE ? art.plaza : art.ground;
             }
         }
         for (Level.Door d : lv.doors) if (d.gap.contains(x, y)) return art.path;
@@ -272,7 +272,7 @@ final class LevelView {
                                                                            // exterior gets scenery, and the check below already skips any edge
                                                                            // that's actually another piece of the same room, not a real wall
                 // things lying on the floor (the city's boss room is bare steel: no road markings there)
-                int n = room.gated && lv.theme == Theme.CITY ? 0 : (int) (b.getWidth() * b.getHeight() / (forest ? 15000 : lv.theme == Theme.LAB ? 26000 : 30000));
+                int n = (int) (b.getWidth() * b.getHeight() / (forest ? 15000 : lv.theme == Theme.LAB ? 26000 : 30000));
                 for (int i = 0; i < n; i++) {
                     double x = b.getX() + 60 + rng.nextDouble() * (b.getWidth() - 120);
                     double y = b.getY() + 60 + rng.nextDouble() * (b.getHeight() - 120);
@@ -346,8 +346,11 @@ final class LevelView {
     }
 
     private static boolean nearInteractive(Level lv, double x, double y) {
-        for (Level.Station s : lv.stations) if (Util.dist(x, y, s.x(), s.y()) < 100) return true;
-        return Util.dist(x, y, lv.guideX, lv.guideY) < 100 || Util.dist(x, y, lv.spawnX, lv.spawnY) < 80;
+        for (Level.Npc n : lv.npcs) if (Util.dist(x, y, n.x(), n.y()) < 100) return true;
+        for (Level.Treasure t : lv.treasures) if (Util.dist(x, y, t.x(), t.y()) < 70) return true;
+        for (Level.Gate g : lv.gates) if (Util.dist(x, y, g.x(), g.y()) < 130) return true;
+        for (Util.Vec v : lv.nestSpots) if (Util.dist(x, y, v.x(), v.y()) < 90) return true;
+        return Util.dist(x, y, lv.spawnX, lv.spawnY) < 80;
     }
 
     /** True if the point isn't inside any room or corridor (open or not), with a little margin. */

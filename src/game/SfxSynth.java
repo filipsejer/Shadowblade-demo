@@ -698,6 +698,34 @@ final class SfxSynth {
                 x.reverb(0.2, 0.5, 0.06);
                 return x;
             }
+            // ------------------------------------------------------------ roguelike runs
+            case XP_PICKUP -> {                                                  // a tiny glassy tick; E, G or A, and the game nudges the pitch per gem size
+                int[] notes = {88, 91, 93};
+                Sx x = new Sx(0.14, seed);
+                x.tone(SINE, 0, 0.12, n(notes[v % 3]), n(notes[v % 3]), 1, 0.001, 0.035).tone(SINE, 0, 0.08, n(notes[v % 3] + 12), n(notes[v % 3] + 12), 0.25, 0.001, 0.02);
+                return x;
+            }
+            case COIN_PICKUP -> {                                                // two quick bright chimes: E then A
+                Sx x = new Sx(0.4, seed);
+                x.bell(0, n(88), new double[]{1, 2.76, 5.4}, new double[]{1, 0.4, 0.15}, 0.08, 0.8).bell(0.06, n(93), new double[]{1, 2.76, 5.4}, new double[]{1, 0.4, 0.15}, 0.12, 0.9);
+                x.reverb(0.3, 0.5, 0.12);
+                return x;
+            }
+            case CHEST_OPEN -> {                                                 // a creaking lid, a thump, and a shower of sparkles rising C E G C
+                Sx x = new Sx(2.0, seed);
+                x.noise(BAND, 0, 0.3, 500, 1400, 1.4, 0.5, 0.05, 0.12).tone(SINE, 0.25, 0.3, 130, 60, 0.8, 0.002, 0.1);
+                int[] up = {72, 76, 79, 84, 88, 91};
+                for (int i = 0; i < up.length; i++) x.fm(0.3 + 0.07 * i, 1.2, n(up[i]), 3.5, 1.3, 0.55, 0.35);
+                x.noise(HIGH, 0.3, 1.0, 7000, 9000, 0.7, 0.12, 0.05, 0.4);
+                x.reverb(0.6, 0.45, 0.3);
+                return x;
+            }
+            case POWERUP -> {                                                    // a quick upward sweep landing on a bright G
+                Sx x = new Sx(0.9, seed);
+                x.tone(SINE, 0, 0.25, n(67), n(91), 0.7, 0.01, 0.12).fm(0.18, 0.6, n(91), 3.5, 1.2, 0.7, 0.25).fm(0.18, 0.6, n(79), 2, 1.0, 0.4, 0.25);
+                x.reverb(0.45, 0.5, 0.2);
+                return x;
+            }
             case CITY_HORN -> {
                 Sx x = new Sx(2.2, seed);
                 double f = v == 0 ? 220 : 196;
