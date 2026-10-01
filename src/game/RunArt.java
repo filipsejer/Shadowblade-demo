@@ -5,7 +5,7 @@ import static game.PixelCanvas.*;
 import java.util.Map;
 
 /**
- * Sprites for the roguelike runs: XP gems (cyan, green, red by size), gold coins, the crate pickups (a heart, a magnet,
+ * Sprites for the fights: XP gems (cyan, green, red by size), gold coins, the crate pickups (a heart, a magnet,
  * a bomb), treasure chests, the portal to the next stage, the orbiting spectral sword, and an icon for each equipment
  * slot (the Armory and the loot lists draw these).
  */

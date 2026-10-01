@@ -52,6 +52,8 @@ final class ImportedArt {
                 m.put(t.key + "." + type + ".walk", new Sprite[]{base, bob(squash(base, 1.06, 0.94), 1)});
                 m.put(t.key + "." + type + ".windup", new Sprite[]{shear(squash(base, 0.94, 1.08), -3)});
             }
+            Sprite[] nest = art.get(t.key + "_nest");
+            if (nest != null) m.put(t.key + ".nest.idle", new Sprite[]{nest[0], squash(nest[0], 1.04, 0.97), nest[0], squash(nest[0], 0.97, 1.04)});
             Sprite[] boss = art.get(t.key + "_boss");
             if (boss != null) {
                 Sprite[] enraged = art.get(t.key + "_boss2");

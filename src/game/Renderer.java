@@ -7,45 +7,26 @@ import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.RadialGradientPaint;
 import java.awt.RenderingHints;
-import java.awt.Shape;
 import java.awt.geom.AffineTransform;
-import java.awt.geom.Arc2D;
-import java.awt.geom.Area;
-import java.awt.geom.Line2D;
 import java.awt.geom.Path2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
-import java.util.List;
 import java.util.Random;
 
-/** Draws a {@link World}: simple shapes on a grey floor, plain health bars, and the menu overlays. */
+/** Draws a {@link World}: the world itself ({@link WorldRenderer}), then the HUD and whichever screen is up. */
 final class Renderer {
     private static final Color OUTSIDE = new Color(52, 52, 56);
-    private static final Color FLOOR = new Color(112, 112, 116);
-    private static final Color GRID = new Color(102, 102, 106);
-    private static final Color WALL = new Color(36, 36, 40);
-    private static final Color DOOR_BARRIER = new Color(170, 50, 50);   // closed for combat
-    private static final Color DOOR_SEALED = new Color(150, 80, 200);    // sealed until the other rooms are cleared
-    private static final Color BAR_BG = new Color(20, 20, 22, 210);
-    private static final Color HP = new Color(70, 200, 90);
-    private static final Color MP = new Color(70, 130, 255);
-    private static final Color XP = new Color(255, 205, 70);
 
     private final Font f12 = new Font(Font.SANS_SERIF, Font.PLAIN, 12);
-    private final Font f14 = new Font(Font.SANS_SERIF, Font.PLAIN, 14);
     private final Font f14b = new Font(Font.SANS_SERIF, Font.BOLD, 14);
     private final Font f16 = new Font(Font.SANS_SERIF, Font.PLAIN, 16);
-    private final Font f18b = new Font(Font.SANS_SERIF, Font.BOLD, 18);
-    private final Font f26b = new Font(Font.SANS_SERIF, Font.BOLD, 26);
-    private final Font f54b = new Font(Font.SANS_SERIF, Font.BOLD, 54);
     private final Random shakeRng = new Random();
-    private final Minimap minimap = new Minimap();
     private final WorldRenderer worldRenderer = new WorldRenderer();
     private final RunHud runHud = new RunHud();
     private final TitleScreen titleScreen = new TitleScreen();
     private final ArmoryScreen armoryScreen = new ArmoryScreen();
-    private final CampaignScreens campaignScreens = new CampaignScreens();
+    private final WorldHud worldHud = new WorldHud();
     private BufferedImage vignetteImage;
 
     void render(World w, Graphics2D g, int width, int height) {
@@ -67,36 +48,32 @@ final class Renderer {
 
         g.setTransform(screen);
         g.drawImage(vignette(width, height), 0, 0, null);
-        if (w.fade > 0) {                                   // arriving in a new level: fade in from black
+        if (w.fade > 0) {                                   // arriving somewhere: fade in from black
             g.setColor(new Color(0, 0, 0, (int) (255 * Util.clamp(w.fade, 0, 1))));
             g.fillRect(0, 0, width, height);
         }
-        if (w.tutorial != null && w.state != World.State.TITLE) drawEyelids(g, w.tutorial, width, height);
-        boolean menu = w.state == World.State.TITLE || w.state == World.State.ARMORY || w.state == World.State.UPGRADE || w.titleScene;
-        if (w.run != null && w.state != World.State.RUN_END) runHud.drawHud(g, w, width, height);
-        else if (!menu && w.state != World.State.RUN_END) drawHud(g, w, width, height);
-        if (w.tutorial != null && w.state == World.State.PLAYING) drawDialogue(g, w.tutorial.dialogue, SQUIRREL, width, height);
-        else if (w.dialogue.active() && w.state == World.State.PLAYING) drawDialogue(g, w.dialogue, TOWNSFOLK, width, height);
+        boolean screenUp = w.titleScene || w.state == World.State.TRAINER || w.state == World.State.SHOP || w.state == World.State.BRIEFING
+            || w.state == World.State.ARMORY || w.state == World.State.RESULTS;
+        if (w.run != null && w.state != World.State.RESULTS) runHud.drawHud(g, w, width, height);
+        else if (!screenUp) worldHud.draw(g, w, width, height);
+        if (w.dialogue.active() && w.state == World.State.PLAYING) drawDialogue(g, w.dialogue, TOWNSFOLK, width, height);
         if (w.audio.muted) {
             g.setFont(f14b);
             g.setColor(new Color(255, 200, 120, 220));
             g.drawString("SOUND OFF  (M)", (float) (width - 140), (float) (height - 16));
         }
-        if (w.tutorial != null && w.tutorial.blackout() > 0) {                 // the story ends: the screen goes dark before level 1
-            g.setColor(new Color(0, 0, 0, (int) (255 * Util.clamp(w.tutorial.blackout(), 0, 1))));
-            g.fillRect(0, 0, width, height);
+        if (w.state == World.State.ARMORY) {
+            if (w.titleScene) titleScreen.drawBackdrop(g, w, width, height);
+            else MenuStyle.veil(g, width, height, 215);
         }
-        boolean backdrop = w.titleScene && (w.state == World.State.CLASSIC || w.state == World.State.CHAPTER_SELECT || w.state == World.State.ARMORY);
-        if (backdrop) titleScreen.drawBackdrop(g, w, width, height);
         switch (w.state) {
             case TITLE -> titleScreen.draw(g, w, width, height);
-            case CLASSIC -> titleScreen.drawClassic(g, w, width, height);
-            case CHAPTER_SELECT -> titleScreen.drawChapters(g, w, width, height);
-            case UPGRADE -> campaignScreens.drawTrainer(g, w, width, height);
-            case PAUSE -> { if (w.run != null) runHud.drawRunPause(g, w, width, height); else campaignScreens.drawPause(g, w, width, height); }
-            case GAME_OVER -> campaignScreens.drawGameOver(g, w, width, height);
+            case TRAINER -> worldHud.drawTrainer(g, w, width, height);
+            case SHOP -> worldHud.drawShop(g, w, width, height);
+            case BRIEFING -> worldHud.drawBriefing(g, w, width, height);
+            case PAUSE -> { if (w.run != null) runHud.drawRunPause(g, w, width, height); else worldHud.drawPause(g, w, width, height); }
             case LEVEL_UP -> runHud.drawChoices(g, w, width, height);
-            case RUN_END -> runHud.drawRunEnd(g, w, width, height);
+            case RESULTS -> runHud.drawRunEnd(g, w, width, height);
             case ARMORY -> armoryScreen.draw(g, w, width, height);
             case PLAYING -> { }
         }
@@ -134,177 +111,9 @@ final class Renderer {
         return Util.clamp(center - view / 2.0, 0, arena - view);
     }
 
-    // ------------------------------------------------------------------ HUD
-
-    private void bar(Graphics2D g, double x, double y, double w, double h, double frac, Color fill) {
-        g.setColor(BAR_BG);
-        g.fill(new Rectangle2D.Double(x - 1.5, y - 1.5, w + 3, h + 3));
-        g.setColor(fill);
-        g.fill(new Rectangle2D.Double(x, y, w * Util.clamp(frac, 0, 1), h));
-    }
-
-    private void drawHud(Graphics2D g, World w, int width, int height) {
-        Player p = w.player;
-        Tutorial tut = w.tutorial;                       // in the tutorial the HUD grows as the controls are taught
-
-        bar(g, 20, 20, 300, 22, p.hp / p.maxHp, HP);
-        g.setFont(f14b);
-        g.setColor(Color.WHITE);
-        g.drawString("HP  " + (int) Math.ceil(Math.max(0, p.hp)) + " / " + (int) p.maxHp, 28, 36);
-        if (tut == null || tut.showMagic()) {
-            bar(g, 20, 50, 240, 14, p.mp / p.maxMp, MP);
-            g.setFont(f12);
-            g.setColor(Color.WHITE);
-            g.drawString("MP  " + (int) p.mp + " / " + (int) p.maxMp, 26, 61);
-        }
-        if (tut == null) {
-            bar(g, 20, 72, 240, 7, (double) p.xp / p.xpNext, XP);
-            g.setFont(f14b);
-            g.setColor(XP);
-            g.drawString("LV " + p.level, 270, 80);
-        }
-
-        if (tut == null && p.skillPoints > 0) {
-            g.setFont(f14b);
-            g.setColor(new Color(255, 215, 90));
-            g.drawString("Skill points: " + p.skillPoints, 20, 100);
-        }
-        Enemy boss = w.boss();
-        if (boss != null) {
-            double bw = 520, bx = (width - bw) / 2;
-            bar(g, bx, 68, bw, 16, boss.hp / boss.maxHp, boss.phase2 ? new Color(255, 110, 60) : new Color(210, 45, 70));
-            g.setFont(f12);
-            boolean lab = w.level.theme == Theme.LAB;               // the last boss has two full bars, one per stage
-            centered(g, w.level.bossName + (lab ? "   -   STAGE " + (boss.phase2 ? 2 : 1) : ""), width / 2.0, 81, Color.WHITE);
-        }
-
-        if (w.level.town) {
-            minimap.draw(g, w, width);
-            g.setFont(f18b);
-            centered(g, "TRANSIT TOWN", width / 2.0, 34, Color.WHITE);
-            g.setFont(f12);
-            centered(g, w.stationOpen ? "The train station is open" : "A path somewhere here leads into the forest",
-                width / 2.0, 54, new Color(220, 220, 230));
-        } else if (tut == null) {
-            minimap.draw(g, w, width);
-
-            // room info
-            g.setFont(f18b);
-            centered(g, w.roomStatus(), width / 2.0, 34, Color.WHITE);
-            g.setFont(f12);
-            Level map = w.level;
-            String roomsLine = map.name + "   -   rooms cleared " + map.clearedRegularCount() + " / " + map.regularRoomCount();
-            if (map.clearedRoomCount() == map.combatRoomCount()) roomsLine = map.name + "   -   cleared!";
-            else if (map.bossUnlocked()) roomsLine += "   -   boss door unlocked";
-            centered(g, roomsLine, width / 2.0, 54, new Color(220, 220, 230));
-        } else if (!tut.objective().isEmpty()) {
-            g.setFont(f18b);
-            centered(g, tut.objective(), width / 2.0, 34, new Color(255, 225, 140));
-        }
-        if (w.noticeTimer > 0 && w.state == World.State.PLAYING) {
-            double fade = Math.min(1, w.noticeTimer);
-            g.setFont(f26b);
-            centered(g, w.notice, width / 2.0, height - 150, Util.alpha(new Color(255, 220, 90), fade));
-            g.setFont(f14);
-            if (!w.noticeHint.isEmpty()) centered(g, w.noticeHint, width / 2.0, height - 126, Util.alpha(Color.WHITE, fade));
-        }
-        if (w.bannerTimer > 0 && w.state == World.State.PLAYING) {                // (not under a pause or death screen)
-            g.setFont(f54b);
-            centered(g, w.banner, width / 2.0, height * 0.3, Util.alpha(Color.WHITE, Math.min(1, w.bannerTimer)));
-        }
-
-        // the command menu (bottom left); the roll charge ring and combo dots are drawn beside/under the player in world space
-        if (tut == null || tut.showMenu()) drawCommandMenu(g, p, height, tut, w.time);
-    }
-
-    /** A soft gold outline that breathes: "look here". */
-    private void pulse(Graphics2D g, Shape s, double time) {
-        double k = 0.5 + 0.5 * Math.sin(time * 6);
-        g.setColor(new Color(255, 215, 90, (int) (110 + 130 * k)));
-        g.setStroke(new BasicStroke((float) (3 + 2.5 * k)));
-        g.draw(s);
-    }
-
-    /**
-     * The Kingdom Hearts style command menu: Attack / Magic / Items stacked in the bottom-left corner. The Magic list
-     * opens to the right of it. Items is greyed out ("coming soon") and the cursor never lands on it.
-     */
-    private void drawCommandMenu(Graphics2D g, Player p, int height, Tutorial tut, double time) {
-        CommandMenu menu = p.menu;
-        CommandMenu.Item[] items = CommandMenu.Item.values();
-        double x = 20, rowW = 190, rowH = 46, rowInner = 40;
-        int rows = tut == null || tut.showMagic() ? items.length : 1;        // in the tutorial only Attack is there until magic is taught
-        double panelH = items.length * rowH;
-        double y0 = height - 24 - rows * rowH;
-        panelH = rows * rowH;
-
-        for (int i = 0; i < rows; i++) {
-            CommandMenu.Item item = items[i];
-            double ry = y0 + i * rowH;
-            boolean selected = menu.cursor == item;
-            RoundRectangle2D row = new RoundRectangle2D.Double(x, ry, rowW, rowInner, 12, 12);
-            g.setColor(!item.enabled ? new Color(20, 20, 24, 190) : selected ? new Color(52, 66, 104, 240) : new Color(24, 24, 30, 220));
-            g.fill(row);
-            if (tut != null && ((item == CommandMenu.Item.ATTACK && tut.focus() == Tutorial.Focus.ATTACK)
-                || (item == CommandMenu.Item.MAGIC && tut.focus() == Tutorial.Focus.MAGIC))) {
-                pulse(g, new RoundRectangle2D.Double(x - 4, ry - 4, rowW + 8, rowInner + 8, 15, 15), time);
-            }
-            g.setColor(!item.enabled ? new Color(70, 70, 78) : selected ? Color.WHITE : new Color(95, 100, 125));
-            g.setStroke(new BasicStroke(selected ? 3f : 1.8f));
-            g.draw(row);
-
-            g.setFont(f18b);
-            Color text = !item.enabled ? new Color(105, 105, 112) : selected ? Color.WHITE : new Color(190, 195, 215);
-            g.setColor(text);
-            g.drawString(item.label, (float) (x + 40), (float) (ry + (item.enabled ? 26 : 19)));
-            if (!item.enabled) {
-                g.setFont(f12);
-                g.setColor(new Color(105, 105, 112));
-                g.drawString("coming soon", (float) (x + 40), (float) (ry + 34));
-            }
-            if (selected && item.enabled) {                      // the cursor arrow
-                Path2D arrow = new Path2D.Double();
-                arrow.moveTo(x + 14, ry + 11);
-                arrow.lineTo(x + 28, ry + 20);
-                arrow.lineTo(x + 14, ry + 29);
-                arrow.closePath();
-                g.setColor(new Color(255, 225, 120));
-                g.fill(arrow);
-            }
-            if (item == CommandMenu.Item.MAGIC) {                // a small ">" showing there's a list to the right
-                Path2D chevron = new Path2D.Double();
-                chevron.moveTo(x + rowW - 22, ry + 13);
-                chevron.lineTo(x + rowW - 14, ry + 20);
-                chevron.lineTo(x + rowW - 22, ry + 27);
-                g.setColor(text);
-                g.setStroke(new BasicStroke(2.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                g.draw(chevron);
-            }
-        }
-
-        if (menu.magicOpen) drawMagicList(g, p, x + rowW + 10, y0 + panelH);
-    }
-
     // ------------------------------------------------------------------ dialogue
 
-    private static final Color SQUIRREL = new Color(244, 170, 90);
     private static final Color TOWNSFOLK = new Color(120, 200, 235);
-
-    /** Two black lids over the screen that open as you wake up (see {@link Tutorial#eyelids}). */
-    private void drawEyelids(Graphics2D g, Tutorial tut, int width, int height) {
-        double lid = tut.eyelids();
-        if (lid <= 0) return;
-        int h = (int) (height / 2.0 * lid), soft = 46;
-        g.setColor(Color.BLACK);
-        g.fillRect(0, 0, width, h);
-        g.fillRect(0, height - h, width, h);
-        java.awt.Paint saved = g.getPaint();
-        g.setPaint(new java.awt.GradientPaint(0, h, new Color(0, 0, 0, 255), 0, h + soft, new Color(0, 0, 0, 0)));
-        g.fillRect(0, h, width, soft);
-        g.setPaint(new java.awt.GradientPaint(0, height - h - soft, new Color(0, 0, 0, 0), 0, height - h, new Color(0, 0, 0, 255)));
-        g.fillRect(0, height - h - soft, width, soft);
-        g.setPaint(saved);
-    }
 
     /** The speech box: the speaker's face on the left, their words written out a letter at a time, a "press E" arrow when they wait for you. */
     private void drawDialogue(Graphics2D g, Dialogue dialogue, Color accent, int width, int height) {
@@ -392,70 +201,4 @@ final class Renderer {
             g.fill(arrow);
         }
     }
-
-    /** The spell list, bottom-aligned with the command menu. Shows MP cost and recharge; red means you can't afford it. */
-    private void drawMagicList(Graphics2D g, Player p, double x, double bottom) {
-        java.util.List<Ability> spells = p.learnedSpells();
-        Ability selected = p.menu.selected(spells);
-        double rowW = 240, rowH = 46, rowInner = 40;
-        double top = bottom - spells.size() * rowH;
-        for (int i = 0; i < spells.size(); i++) {
-            Ability a = spells.get(i);
-            int lv = p.spellLevel[a.ordinal()];
-            double cost = a.cost(lv);
-            boolean afford = p.mp >= cost;
-            double cd = p.cooldown[a.ordinal()] / (a.cooldown * p.cooldownMult);
-            boolean ready = afford && cd <= 0;
-            double ry = top + i * rowH;
-            boolean isSel = a == selected;
-            RoundRectangle2D row = new RoundRectangle2D.Double(x, ry, rowW, rowInner, 12, 12);
-            g.setColor(isSel ? new Color(52, 66, 104, 240) : new Color(24, 24, 30, 220));
-            g.fill(row);
-            if (cd > 0) {                                        // recharging: a pale bar draining across the row
-                Shape saved = g.getClip();
-                g.clip(row);
-                g.setColor(new Color(255, 255, 255, 55));
-                g.fill(new Rectangle2D.Double(x, ry, rowW * Util.clamp(cd, 0, 1), rowInner));
-                g.setClip(saved);
-            }
-            g.setColor(isSel ? Color.WHITE : Util.alpha(a.color, 0.55));
-            g.setStroke(new BasicStroke(isSel ? 3f : 1.8f));
-            g.draw(row);
-
-            g.setFont(f14b);
-            g.setColor(ready ? Color.WHITE : new Color(150, 150, 160));
-            g.drawString(a.label, (float) (x + 16), (float) (ry + 19));
-            g.setFont(f12);
-            g.setColor(Util.alpha(a.color, ready ? 1 : 0.55));
-            g.drawString("Level " + lv, (float) (x + 16), (float) (ry + 34));
-            g.setFont(f18b);
-            right(g, (int) cost + " MP", x + rowW - 14, ry + 27, afford ? new Color(140, 185, 255) : new Color(225, 105, 105));
-        }
-        g.setFont(f12);
-        g.setColor(new Color(215, 215, 225));
-        g.drawString(p.menu.shiftOpened ? "ENTER cast     release SHIFT to close" : "ENTER cast     LEFT back", (float) x, (float) (top - 8));
-    }
-
-    // ------------------------------------------------------------------ overlays
-
-    // ------------------------------------------------------------------ text helpers
-
-    private void centered(Graphics2D g, String s, double cx, double baseline, Color c) {
-        FontMetrics fm = g.getFontMetrics();
-        float x = (float) (cx - fm.stringWidth(s) / 2.0);
-        boolean light = c.getRed() + c.getGreen() + c.getBlue() > 300;   // a drop shadow only helps light text
-        if (light) {
-            g.setColor(new Color(0, 0, 0, Math.min(200, c.getAlpha())));
-            g.drawString(s, x + 1.5f, (float) baseline + 1.5f);
-        }
-        g.setColor(c);
-        g.drawString(s, x, (float) baseline);
-    }
-
-    private void right(Graphics2D g, String s, double rightX, double baseline, Color c) {
-        FontMetrics fm = g.getFontMetrics();
-        g.setColor(c);
-        g.drawString(s, (float) (rightX - fm.stringWidth(s)), (float) baseline);
-    }
-
 }

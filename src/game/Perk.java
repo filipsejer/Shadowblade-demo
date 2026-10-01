@@ -7,7 +7,7 @@ import java.util.Random;
 import java.util.function.Consumer;
 
 /**
- * Everything a level-up can offer in a roguelike run. {@link Kind#SKILL}s are weapons that fire on their own (see
+ * Everything a level-up can offer in a fight. {@link Kind#SKILL}s are weapons that fire on their own (see
  * {@link Arsenal}), up to {@value #SKILL_SLOTS} of them, each with five ranks — and a sixth, its <em>evolution</em>,
  * offered once the skill is at rank 5 and you also own its {@link #partner} passive. {@link Kind#PASSIVE}s are stat
  * boosts, up to {@value #PASSIVE_SLOTS} different ones. A run starts with nothing but the sword: even the roll is a pick.

@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.Properties;
 
 /**
- * Everything that outlasts a single roguelike run: gold, the items you own, which ones you're wearing, and a few
+ * Everything that outlasts a single fight: gold, the items you own, which ones you're wearing, and a few
  * records. Saved as {@code ~/.spellblade/profile.properties} (the folder can be moved with {@code -Dspellblade.home=...},
  * which the tests use so they never touch real saves).
  */

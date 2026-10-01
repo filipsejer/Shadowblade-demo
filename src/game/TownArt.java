@@ -5,8 +5,8 @@ import static game.PixelCanvas.*;
 import java.util.Map;
 
 /**
- * Transit Town: three chatty locals (an old traveller, a merchant and a child) and the train station itself, closed
- * until level 1 is behind you. Painted in code, in the same small round-headed chibi style as {@link PeopleArt}.
+ * Three of the forest's people: Elder Rowan (an old traveller with a cane), Hunter Fenn (a traveller with a pack) and
+ * Wren (a small child). Painted in code, in the same small round-headed chibi style as {@link PeopleArt}.
  */
 final class TownArt {
     private TownArt() {}
@@ -21,8 +21,6 @@ final class TownArt {
         m.put("town.elder.idle", PeopleArt.frames(2, TownArt::elder, 10, 24));
         m.put("town.merchant.idle", PeopleArt.frames(2, TownArt::merchant, 10, 24));
         m.put("town.child.idle", PeopleArt.frames(2, TownArt::child, 9, 21));
-        m.put("station.closed", PeopleArt.frames(1, f -> station(false), 25, 52));
-        m.put("station.open", PeopleArt.frames(2, f -> station(true), 25, 52));
     }
 
     private static void head(PixelCanvas c, int cx, int top, int hair, boolean bald) {
@@ -100,47 +98,6 @@ final class TownArt {
         c.rect(3, 10 + b, 8, 2, scarf);
         head(c, 8, 1 + b, rgb(196, 150, 60), false);
         c.bevel(0.14, 0.2);
-        c.outline(OUT);
-        return c;
-    }
-
-    // ------------------------------------------------------------------ the train station
-
-    /**
-     * A small stone platform with a wooden ticket booth and a signal lamp: dark and shuttered until level 1 is
-     * behind you, then lit up warm with the shutter raised.
-     */
-    private static PixelCanvas station(boolean open) {
-        PixelCanvas c = new PixelCanvas(50, 58);
-        int lamp = open ? rgb(255, 210, 110) : rgb(70, 70, 82);
-        int glow = open ? rgb(255, 235, 180) : rgb(60, 60, 72);
-
-        c.rect(2, 46, 46, 8, STONE_D);                                             // the platform
-        c.rect(2, 46, 46, 2, STONE_L);
-        for (int x = 4; x < 46; x += 8) c.rect(x, 48, 1, 6, STONE);
-        c.rect(0, 53, 50, 5, rgb(40, 40, 48));                                     // the track, just visible at the front
-
-        c.rect(8, 14, 34, 34, WOOD_D);                                             // the booth
-        c.rect(8, 14, 34, 3, WOOD);
-        c.rect(11, 20, 12, 16, open ? rgb(255, 244, 200) : rgb(30, 34, 42));       // the ticket window
-        c.rect(11, 20, 12, 2, WOOD_L);
-        if (!open) for (int y = 22; y < 34; y += 3) c.rect(11, y, 12, 1, WOOD);     // shuttered
-        c.rect(27, 20, 12, 22, WOOD);                                              // the door
-        c.rect(27, 20, 12, 2, WOOD_L);
-        c.rect(31, 30, 4, 6, WOOD_D);
-        c.set(34, 33, rgb(248, 204, 76));
-
-        c.poly(new int[]{4, 46, 42, 8}, new int[]{14, 14, 4, 4}, rgb(150, 42, 52));  // the awning
-        c.poly(new int[]{4, 46, 42, 8}, new int[]{14, 14, 16, 16}, rgb(110, 28, 36));
-        for (int x = 8; x < 44; x += 8) c.tri(x, 16, x + 4, 16, x + 2, 20, x % 16 == 0 ? WHITE : rgb(150, 42, 52));
-
-        c.rect(23, 2, 4, 12, WOOD_D);                                              // the signal lamp on its post
-        c.disc(25, 3, 4.6, lamp);
-        c.disc(25, 3, 2.6, glow);
-        c.rect(6, 30, 3, 3, open ? glow : lamp);                                   // two little window-side lanterns
-        c.rect(41, 30, 3, 3, open ? glow : lamp);
-
-        c.bevel(0.1, 0.16);
         c.outline(OUT);
         return c;
     }

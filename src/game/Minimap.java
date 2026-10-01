@@ -26,12 +26,8 @@ final class Minimap {
 
     private static final Color BACKDROP = new Color(8, 14, 30, 205);
     private static final Color ROOM_SAFE = new Color(110, 150, 215, 200);
-    private static final Color ROOM_UNVISITED = new Color(80, 92, 125, 140);
-    private static final Color ROOM_COMBAT = new Color(205, 80, 80, 210);
     private static final Color ROOM_CLEARED = new Color(90, 172, 152, 210);
     private static final Color CORRIDOR_OPEN = new Color(160, 182, 222, 210);
-    private static final Color CORRIDOR_LOCKED = new Color(205, 80, 80, 230);
-    private static final Color CORRIDOR_SEALED = new Color(165, 105, 225, 235);
     private static final Color WALL = new Color(225, 235, 255, 230);
     private static final Color BEZEL = new Color(224, 190, 96);
     private static final Color ENEMY = new Color(240, 60, 60);
@@ -72,18 +68,13 @@ final class Minimap {
 
         for (Level.Door d : level.doors) {
             if (!REVEAL_ALL && !d.a.visited && !d.b.visited) continue;
-            g.setColor(d.sealed ? CORRIDOR_SEALED : d.open() ? CORRIDOR_OPEN : CORRIDOR_LOCKED);
+            g.setColor(CORRIDOR_OPEN);
             g.fill(d.gap);
             shown.add(new Area(d.gap));
         }
         for (Level.Room r : level.rooms) {
             if (!REVEAL_ALL && !r.visited) continue;
-            g.setColor(switch (r.state) {
-                case SAFE -> ROOM_SAFE;
-                case UNVISITED -> ROOM_UNVISITED;
-                case COMBAT -> ROOM_COMBAT;
-                case CLEARED -> ROOM_CLEARED;
-            });
+            g.setColor(r.state == Level.Room.State.SAFE ? ROOM_SAFE : ROOM_CLEARED);
             for (Rectangle2D.Double p : r.parts) {
                 g.fill(p);
                 shown.add(new Area(p));
@@ -95,26 +86,34 @@ final class Minimap {
     }
 
     private void drawMarkers(Graphics2D g, World w, double px) {
-        for (Level.Station s : w.level.stations) {
-            double h = 3.2 * px;
-            g.setColor(new Color(15, 20, 35));
-            g.fill(new Rectangle2D.Double(s.x() - h - px, s.y() - h - px, 2 * h + 2 * px, 2 * h + 2 * px));
-            g.setColor(s.category().color);
-            g.fill(new Rectangle2D.Double(s.x() - h, s.y() - h, 2 * h, 2 * h));
+        Level lv = w.level;
+        for (Level.Npc n : lv.npcs) {                   // people: blue; the trainer and the merchant: gold
+            if (!seen(lv, n.x(), n.y())) continue;
+            square(g, n.x(), n.y(), 3.2 * px, px, n.role() == Level.Role.TALK ? new Color(120, 200, 255) : new Color(255, 214, 90));
         }
-
-        if (w.level.guideAppeared) {                    // the guide: a green marker, so you can find your way back to them
-            double h = 3.6 * px;
+        for (Level.Treasure t : lv.treasures) {         // chests you haven't opened yet
+            if (w.adventure == null || w.adventure.opened.contains(t.id()) || !seen(lv, t.x(), t.y())) continue;
+            square(g, t.x(), t.y(), 2.6 * px, px, new Color(255, 170, 60));
+        }
+        for (Level.Gate gate : lv.gates) {              // the way into a challenge
+            if (!seen(lv, gate.x(), gate.y())) continue;
+            double r = 5 * px;
             g.setColor(new Color(15, 20, 35));
-            g.fill(new Rectangle2D.Double(w.level.guideX - h - px, w.level.guideY - h - px, 2 * h + 2 * px, 2 * h + 2 * px));
-            g.setColor(new Color(70, 205, 95));
-            g.fill(new Rectangle2D.Double(w.level.guideX - h, w.level.guideY - h, 2 * h, 2 * h));
+            g.fill(new Ellipse2D.Double(gate.x() - r - px, gate.y() - r - px, 2 * r + 2 * px, 2 * r + 2 * px));
+            g.setColor(new Color(200, 140, 255));
+            g.fill(new Ellipse2D.Double(gate.x() - r, gate.y() - r, 2 * r, 2 * r));
+        }
+        if (w.run != null) {
+            for (Pickup pk : w.run.pickups) {
+                if (pk.kind == Pickup.Kind.CACHE) square(g, pk.x, pk.y, 3 * px, px, new Color(255, 214, 90));
+                else if (pk.kind == Pickup.Kind.PORTAL) square(g, pk.x, pk.y, 4 * px, px, new Color(200, 150, 255));
+            }
         }
 
         Enemy locked = w.lockedTarget();
         for (Enemy e : w.enemies) {
             if (e.hp <= 0) continue;
-            boolean boss = e.type == Enemy.Type.BOSS;
+            boolean boss = e.type == Enemy.Type.BOSS || e.rooted();
             double r = (boss ? 6 : 3.2) * px;
             if (e.intangible()) {                   // a shade in shadow mode: just a faint violet ring
                 g.setColor(new Color(170, 130, 235, 200));
@@ -122,7 +121,7 @@ final class Minimap {
                 g.draw(new Ellipse2D.Double(e.x - r, e.y - r, 2 * r, 2 * r));
                 continue;
             }
-            g.setColor(boss ? new Color(255, 90, 110) : ENEMY);
+            g.setColor(e.rooted() ? new Color(230, 100, 255) : boss ? new Color(255, 90, 110) : ENEMY);
             g.fill(new Ellipse2D.Double(e.x - r, e.y - r, 2 * r, 2 * r));
             if (boss) {
                 g.setColor(Color.WHITE);
@@ -136,6 +135,19 @@ final class Minimap {
                 g.draw(new Ellipse2D.Double(e.x - lr, e.y - lr, 2 * lr, 2 * lr));
             }
         }
+    }
+
+    /** True if the point is in a room you've been to (the radar only shows what you've seen). */
+    private static boolean seen(Level lv, double x, double y) {
+        Level.Room r = lv.roomAt(x, y, 0);
+        return REVEAL_ALL || r != null && r.visited;
+    }
+
+    private static void square(Graphics2D g, double x, double y, double h, double px, Color c) {
+        g.setColor(new Color(15, 20, 35));
+        g.fill(new Rectangle2D.Double(x - h - px, y - h - px, 2 * h + 2 * px, 2 * h + 2 * px));
+        g.setColor(c);
+        g.fill(new Rectangle2D.Double(x - h, y - h, 2 * h, 2 * h));
     }
 
     private void drawBezel(Graphics2D g, double cx, double cy) {

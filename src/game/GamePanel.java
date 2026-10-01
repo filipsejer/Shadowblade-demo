@@ -12,7 +12,7 @@ import javax.swing.Timer;
 final class GamePanel extends JPanel {
     private static final double STEP = 1.0 / 60.0;
 
-    private final World world = new World(!"off".equals(System.getProperty("spellblade.tutorial")));   // ./run.sh notutorial starts with it switched off
+    private final World world = new World();
     private final Input input = new Input();
     private final Renderer renderer = new Renderer();
     private final AudioEngine engine = new AudioEngine();
@@ -59,9 +59,9 @@ final class GamePanel extends JPanel {
         if (stepped) repaint();
     }
 
-    /** The window is closing: a run in progress is saved so CONTINUE can pick it up next time. */
+    /** The window is closing: the game is saved so CONTINUE can pick it up next time. */
     void onClose() {
-        world.saveRunIfAny();
+        world.saveIfAny();
     }
 
     @Override protected void paintComponent(Graphics g) {

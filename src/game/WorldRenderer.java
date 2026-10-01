@@ -17,8 +17,8 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * Draws the game world with sprites: the level, the shops, the guide, the player and every enemy sorted by depth (so
- * whoever is lower on the screen is in front), each with a shadow under its feet, plus attacks and other effects.
+ * Draws the game world with sprites: the level, its people, chests and gates, the player and every enemy sorted by
+ * depth (so whoever is lower on the screen is in front), each with a shadow under its feet, plus attacks and other effects.
  * Menus and the HUD are drawn afterwards by {@link Renderer}.
  */
 final class WorldRenderer {
@@ -35,8 +35,6 @@ final class WorldRenderer {
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
         Level level = w.level;
         levelView.draw(g, level, view, w.time);
-        for (Level.Door door : level.doors) if (door.sealed && view.intersects(door.gap)) drawSealedLabel(g, door);
-        if (level.town) drawForestPath(g, w);
         for (Zone z : w.zones) drawZone(g, w, z);
         for (Blast b : w.blasts) drawBlast(g, w, b);
         Run run = w.run;
@@ -44,7 +42,7 @@ final class WorldRenderer {
             if (run.ringActive) drawBossRing(g, w, run);
             drawAura(g, w, w.player);
             for (Pickup pk : run.pickups) {
-                if (pk.kind == Pickup.Kind.PORTAL || pk.kind == Pickup.Kind.ELITE_CHEST || pk.kind == Pickup.Kind.BOSS_CHEST) continue;
+                if (big(pk)) continue;
                 if (view.intersects(pk.x - 30, pk.y - 40, 60, 60)) drawPickup(g, w, pk);
             }
         }
@@ -54,26 +52,27 @@ final class WorldRenderer {
         List<Item> items = new ArrayList<>();
         if (run != null) {
             for (Pickup pk : run.pickups) {
-                if (pk.kind != Pickup.Kind.PORTAL && pk.kind != Pickup.Kind.ELITE_CHEST && pk.kind != Pickup.Kind.BOSS_CHEST) continue;
+                if (!big(pk)) continue;
                 if (!view.intersects(pk.x - 80, pk.y - 140, 160, 180)) continue;
                 shadow(g, pk.x, pk.y, pk.kind == Pickup.Kind.PORTAL ? 38 : 28, 8);
                 items.add(new Item(pk.y, () -> drawBigPickup(g, w, run, pk)));
             }
         }
-        for (Level.Station s : level.stations) {
-            items.add(new Item(s.y() + 36, () -> drawShop(g, w, s)));
-            shadow(g, s.x(), s.y() + 36, 46, 12);
-        }
-        if (level.hasStation) {                                 // the station is always there, just shuttered until level 1 is done
-            items.add(new Item(level.guideY + 44, () -> drawStation(g, w)));
-            shadow(g, level.guideX, level.guideY + 46, 40, 12);
-        } else if (level.guideAppeared) {
-            items.add(new Item(level.guideY + 20, () -> drawGuide(g, w)));
-            shadow(g, level.guideX, level.guideY + 22, 22, 7);
-        }
         for (Level.Npc npc : level.npcs) {
-            items.add(new Item(npc.y() + 20, () -> drawNpc(g, w, npc)));
-            shadow(g, npc.x(), npc.y() + 22, 16, 6);
+            boolean stall = npc.role() != Level.Role.TALK;
+            items.add(new Item(npc.y() + (stall ? 36 : 20), () -> drawNpc(g, w, npc)));
+            if (stall) shadow(g, npc.x(), npc.y() + 36, 46, 12);
+            else shadow(g, npc.x(), npc.y() + 22, 16, 6);
+        }
+        for (Level.Treasure t : level.treasures) {
+            if (w.adventure == null || !view.intersects(t.x() - 60, t.y() - 90, 120, 120)) continue;
+            boolean opened = w.adventure.opened.contains(t.id());
+            shadow(g, t.x(), t.y(), 26, 8);
+            items.add(new Item(t.y(), () -> drawTreasure(g, w, t, opened)));
+        }
+        for (Level.Gate gate : level.gates) {
+            if (!view.intersects(gate.x() - 140, gate.y() - 200, 280, 280)) continue;
+            items.add(new Item(gate.y(), () -> drawGate(g, w, gate)));
         }
         for (Level.Landmark l : level.landmarks) {
             if (!view.intersects(l.x() - 140, l.y() - 240, 280, 300)) continue;
@@ -86,18 +85,6 @@ final class WorldRenderer {
             Sprite sprite = Art.frames(BreakableArt.name(b.kind, level.theme))[0];
             items.add(new Item(b.y, () -> sprite.draw(g, b.x, b.y, Art.SCALE, false)));
             shadow(g, b.x, b.y - 3, b.radius * 1.15, b.radius * 0.38);
-        }
-        Tutorial tut = w.tutorial;
-        if (tut != null && !tut.squirrel.hidden) {
-            Tutorial.Squirrel q = tut.squirrel;
-            items.add(new Item(q.y, () -> drawSquirrel(g, w, q)));
-            shadow(g, q.x, q.y - 1, 26, 7);
-        }
-        if (tut != null) {
-            for (Tutorial.Acorn a : tut.acorns) {
-                items.add(new Item(a.y, () -> Art.frame("prop.acorn", w.time, 8).draw(g, a.x, a.y - 22, Art.SCALE, false, a.spin, 1f)));
-                shadow(g, a.x, a.y, 9, 3);
-            }
         }
         for (Enemy e : w.enemies) {
             if (!view.intersects(e.x - 90, e.y - 140, 180, 220)) continue;
@@ -126,11 +113,16 @@ final class WorldRenderer {
         if (lock != null) drawLockOn(g, lock);
         if (w.titleScene) return;                                             // the menus' backdrop: just the scene, no combat furniture
         for (Enemy e : w.enemies) drawEnemyBar(g, w, e);
-        for (Enemy e : w.enemies) if (e.stun > 0.05 && e.spawnIn <= 0 && !e.type.armored && e.hp > 0 && !e.shielded) drawDizzy(g, w, e);
-        if (tut == null || tut.showMenu()) drawComboDots(g, p);
-        if ((tut == null || tut.showRoll()) && p.rollUnlocked) drawRollCharge(g, w, p);
+        for (Enemy e : w.enemies) if (e.stun > 0.05 && e.spawnIn <= 0 && !e.type.armored && e.hp > 0) drawDizzy(g, w, e);
+        if (run != null) drawComboDots(g, p);
+        if (p.rollUnlocked) drawRollCharge(g, p);
         if (run != null) drawPlayerBar(g, p);
-        if (tut != null) drawKeyHint(g, w, tut);
+        if (run != null) drawCachePrompt(g, w, run);
+        drawPrompt(g, w);
+    }
+
+    private static boolean big(Pickup pk) {
+        return pk.kind == Pickup.Kind.PORTAL || pk.kind == Pickup.Kind.ELITE_CHEST || pk.kind == Pickup.Kind.BOSS_CHEST || pk.kind == Pickup.Kind.CACHE;
     }
 
     /** How far through the attack chain the player is: a row of pips under their feet, lit up hit by hit. */
@@ -153,7 +145,7 @@ final class WorldRenderer {
      * The roll's cooldown: a ring beside the player that sweeps shut as it charges, then vanishes once the roll is
      * ready again — there's nothing to show once it's off cooldown.
      */
-    private void drawRollCharge(Graphics2D g, World w, Player p) {
+    private void drawRollCharge(Graphics2D g, Player p) {
         if (p.dodgeCd <= 0) return;
         double frac = 1 - Util.clamp(p.dodgeCd / p.dodgeCooldown, 0, 1);
         double r = 11, cx = p.x + p.radius + 16, cy = p.y;
@@ -163,13 +155,6 @@ final class WorldRenderer {
         g.setColor(new Color(215, 218, 228, 235));
         g.setStroke(new BasicStroke(2.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
         g.draw(new Arc2D.Double(cx - r, cy - r, r * 2, r * 2, 90, -360 * frac, Arc2D.OPEN));
-        if (w.tutorial != null && w.tutorial.focus() == Tutorial.Focus.ROLL) {
-            double k = 0.5 + 0.5 * Math.sin(w.time * 6);
-            g.setColor(new Color(255, 215, 90, (int) (110 + 130 * k)));
-            g.setStroke(new BasicStroke((float) (3 + 2.5 * k)));
-            double pr = r + 5;
-            g.draw(new Ellipse2D.Double(cx - pr, cy - pr, pr * 2, pr * 2));
-        }
     }
 
     private final java.util.Map<String, Sprite> landmarks = new java.util.HashMap<>();
@@ -209,192 +194,128 @@ final class WorldRenderer {
         else if (p.moving) s = Art.frame("hero." + dir + ".walk", w.time, 9);
         else s = Art.frame("hero." + dir + ".idle", w.time, 2);
         float alpha = p.hurtTimer > 0 && ((int) (p.hurtTimer * 20) % 2 == 0) ? 0.45f : 1f;
-        boolean dazed = w.tutorial != null && w.tutorial.dazed();
-        double sway = dazed ? Math.sin(w.time * 2.4) * 4 : 0;                       // waking up: swaying, with stars going round the head
-        s.draw(g, p.x + sway, p.y + 14, Art.SCALE, flip, 0, alpha);
-        if (dazed) {
-            Sprite[] star = Art.frames("fx.star");
-            double top = p.y + 14 - s.above(Art.SCALE);
-            for (int i = 0; i < 3; i++) {
-                double a = w.time * 4 + i * Math.PI * 2 / 3;
-                star[(int) (w.time * 8 + i) % star.length].draw(g, p.x + sway + Math.cos(a) * 22, top + 10 + Math.sin(a) * 6, 2, false);
-            }
-        }
+        s.draw(g, p.x, p.y + 14, Art.SCALE, flip, 0, alpha);
         if (p.hurtTimer > 0.5) s.drawSilhouette(g, p.x, p.y + 14, Art.SCALE, flip, 0xFFFFFF, 0.65f);   // white flash when hit
     }
 
-    // ------------------------------------------------------------------ the tutorial's squirrel and hints
+    // ------------------------------------------------------------------ the explorable world
 
-    private void drawSquirrel(Graphics2D g, World w, Tutorial.Squirrel q) {
-        Tutorial.Squirrel.Pose pose = q.pose();
-        Sprite s = switch (pose) {
-            case RUN -> Art.frame("squirrel.run", w.time, 14);
-            case SCARED -> Art.frame("squirrel.scared", w.time, 8);
-            case THROW -> Art.frames("squirrel.throw")[Math.max(0, Math.min(1, q.throwFrame))];
-            default -> Art.frame("squirrel.idle", w.time, 2);
-        };
-        double hop = pose == Tutorial.Squirrel.Pose.RUN ? Math.abs(Math.sin(w.time * 14)) * 7 : 0;
-        double shiver = pose == Tutorial.Squirrel.Pose.SCARED ? Math.sin(w.time * 50) * 1.5 : 0;
-        s.draw(g, q.x + shiver, q.y - hop, Art.SCALE, q.faceLeft);
-        if (q.alarm > 0) {                                                       // a "!" in a bubble
-            double bx = q.x, by = q.y - s.above(Art.SCALE) - 26 - 5 * Math.sin(w.time * 18);
-            g.setColor(Color.WHITE);
-            g.fill(new RoundRectangle2D.Double(bx - 12, by - 20, 24, 30, 10, 10));
-            g.setColor(new Color(200, 50, 50));
-            g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 22));
-            centered(g, "!", bx, by + 3, new Color(200, 50, 50));
+    /** Someone to talk to (the trainer and the merchant stand behind their stalls), their name, and a "!" if they've news. */
+    private void drawNpc(Graphics2D g, World w, Level.Npc npc) {
+        boolean stall = npc.role() != Level.Role.TALK;
+        double feet = npc.y() + (stall ? 36 : 20);
+        Sprite s = Art.frame(npc.portrait(), w.time + npc.x() * 0.01, npc.id().equals("hermit") ? 2.2 : 1.8);
+        double hover = npc.id().equals("hermit") ? 7 + 3 * Math.sin(w.time * 3) : 0;      // the hermit floats a little
+        s.draw(g, npc.x(), feet - hover, Art.SCALE, false);
+        double top = feet - s.above(Art.SCALE) - hover;
+        g.setFont(f12);
+        Color c = stall ? new Color(255, 214, 110) : new Color(170, 220, 255);
+        centered(g, npc.name(), npc.x(), top - 10, c);
+        if (w.adventure != null && Story.hasNews(w.adventure, npc.id())) {               // something new to say: a bobbing "!"
+            double by = top - 34 + 4 * Math.sin(w.time * 5);
+            g.setColor(new Color(255, 214, 90));
+            g.fill(new RoundRectangle2D.Double(npc.x() - 9, by - 18, 18, 24, 8, 8));
+            g.setColor(new Color(60, 40, 10));
+            g.setFont(f14b);
+            FontMetrics fm = g.getFontMetrics();
+            g.drawString("!", (float) (npc.x() - fm.stringWidth("!") / 2.0), (float) (by));
         }
     }
 
-    /** Key caps beside the hero when they seem stuck; a cap lights up while its key is held. */
-    private void drawKeyHint(Graphics2D g, World w, Tutorial tut) {
-        String[] keys = tut.hintKeys();
-        double a = tut.hintAlpha();
-        if (keys == null || a < 0.02) return;
-        Player p = w.player;
-        double cx = p.x, cy = p.y - 96 + 4 * Math.sin(w.time * 4);
+    /** A chest in the world: glowing until it's opened, then left standing open (dimmed). */
+    private void drawTreasure(Graphics2D g, World w, Level.Treasure t, boolean opened) {
+        if (!opened) {
+            double r = 36 + 4 * Math.sin(w.time * 4 + t.x() * 0.01);
+            g.setColor(Util.alpha(t.big() ? new Color(255, 150, 60) : new Color(255, 214, 90), 0.4));
+            g.setStroke(new BasicStroke(2.5f));
+            g.draw(new Ellipse2D.Double(t.x() - r, t.y() - r * 0.35, r * 2, r * 0.7));
+        }
+        Art.frames(t.big() ? "run.chest.boss" : "run.chest.elite")[0].draw(g, t.x(), t.y(), Art.SCALE, false, 0, opened ? 0.4f : 1f);
+    }
+
+    /** A challenge's gate: a swirl of light, with its name; knotted shut with thorns until someone has asked you in. */
+    private void drawGate(Graphics2D g, World w, Level.Gate gate) {
+        Challenge c = gate.challenge();
+        boolean open = w.gateOpen(c);
+        double x = gate.x(), y = gate.y();
+        double r = 64 + 6 * Math.sin(w.time * 2.4);
+        Color tint = open ? new Color(200, 140, 255) : new Color(120, 90, 70);
+        g.setColor(Util.alpha(tint, open ? 0.22 : 0.15));
+        g.fill(new Ellipse2D.Double(x - r, y - r * 0.38, r * 2, r * 0.76));
+        g.setColor(Util.alpha(tint, 0.6));
+        g.setStroke(new BasicStroke(3f));
+        g.draw(new Ellipse2D.Double(x - r, y - r * 0.38, r * 2, r * 0.76));
+        Art.frame("run.portal", w.time, open ? 10 : 2).draw(g, x, y, Art.SCALE, false, 0, open ? 1f : 0.35f);
+        if (!open) {                                                                      // thorns across it
+            g.setStroke(new BasicStroke(5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            for (int i = 0; i < 5; i++) {
+                double a = -0.9 + i * 0.45;
+                g.setColor(new Color(60, 40, 34, 230));
+                g.draw(new Line2D.Double(x - 46, y - 70 + i * 14, x + 46, y - 50 - i * 12 + Math.sin(a) * 10));
+            }
+        }
         g.setFont(f14b);
-        if (keys.length == 4) {                                                  // W A S D laid out like the keys
-            String[] names = {"W", "A", "S", "D"};
-            double[][] pos = {{0, -34}, {-34, 0}, {0, 0}, {34, 0}};
-            for (int i = 0; i < 4; i++) cap(g, names[i], cx + pos[i][0], cy + pos[i][1], 30, tut.held(names[i]), a);
+        centered(g, c.title, x, y - 122, open ? new Color(225, 195, 255) : new Color(190, 170, 160));
+        g.setFont(f12);
+        int clears = w.adventure == null ? 0 : w.adventure.clears(c);
+        String sub = !open ? "Sealed by thorns" : clears == 0 ? "From " + c.giver : "Cleared " + clears + (clears == 1 ? " time" : " times") + MenuStyle.DOT + "it's stronger now";
+        centered(g, sub, x, y - 104, new Color(215, 210, 225));
+    }
+
+    /** A key cap and a word over whatever E would use right now: "E  Talk", "E  Open", "E  Enter". */
+    private void drawPrompt(Graphics2D g, World w) {
+        if (w.run != null || w.state != World.State.PLAYING || w.dialogue.stopsWorld()) return;
+        double x, y;
+        String what;
+        Level.Npc npc = w.npcNearby();
+        Level.Treasure t = npc == null ? w.treasureNearby() : null;
+        Level.Gate gate = npc == null && t == null ? w.gateNearby() : null;
+        if (npc != null) {
+            x = npc.x();
+            y = npc.y() + (npc.role() == Level.Role.TALK ? 52 : 74);
+            what = npc.role() == Level.Role.TRAINER && w.adventure.has("met.ash") ? "Train"
+                : npc.role() == Level.Role.MERCHANT && w.adventure.has("met.bramble") ? "Shop" : "Talk";
+        } else if (t != null) {
+            x = t.x();
+            y = t.y() + 34;
+            what = "Open";
+        } else if (gate != null) {
+            x = gate.x();
+            y = gate.y() + 46;
+            what = w.gateOpen(gate.challenge()) ? "Enter" : "Look";
+        } else {
             return;
         }
-        double total = 0;
-        double[] widths = new double[keys.length];
-        for (int i = 0; i < keys.length; i++) {
-            widths[i] = keys[i].length() > 2 ? 24 + keys[i].length() * 11 : 30;
-            total += widths[i] + (i > 0 ? 26 : 0);
-        }
-        double x = cx - total / 2;
-        for (int i = 0; i < keys.length; i++) {
-            if (i > 0) {
-                centered(g, "+", x + 13, cy + 5, Util.alpha(Color.WHITE, a));
-                x += 26;
-            }
-            cap(g, keys[i], x + widths[i] / 2, cy, widths[i], tut.held(keys[i]), a);
-            x += widths[i];
-        }
+        keyPrompt(g, x, y, what);
     }
 
-    private void cap(Graphics2D g, String label, double cx, double cy, double width, boolean lit, double alpha) {
-        RoundRectangle2D box = new RoundRectangle2D.Double(cx - width / 2, cy - 15, width, 30, 8, 8);
-        g.setColor(lit ? Util.alpha(new Color(255, 214, 90), alpha) : Util.alpha(new Color(28, 28, 36), 0.85 * alpha));
-        g.fill(box);
-        g.setColor(Util.alpha(lit ? Color.WHITE : new Color(225, 225, 235), alpha));
-        g.setStroke(new BasicStroke(2f));
-        g.draw(box);
+    /** A cache in a fight you're standing at: what it costs, and E to open it. */
+    private void drawCachePrompt(Graphics2D g, World w, Run run) {
+        Pickup cache = run.cacheNearby(w);
+        if (cache == null || w.state != World.State.PLAYING) return;
+        keyPrompt(g, cache.x, cache.y + 34, run.gold >= cache.value ? "Open  (" + cache.value + " gold)" : "Needs " + cache.value + " gold");
+    }
+
+    private void keyPrompt(Graphics2D g, double x, double y, String what) {
         g.setFont(f14b);
         FontMetrics fm = g.getFontMetrics();
-        g.setColor(Util.alpha(lit ? new Color(40, 30, 10) : Color.WHITE, alpha));
-        g.drawString(label, (float) (cx - fm.stringWidth(label) / 2.0), (float) (cy + 5));
-    }
-
-    // ------------------------------------------------------------------ shops and the guide
-
-    private void drawShop(Graphics2D g, World w, Level.Station s) {
-        String key = switch (s.category()) { case COMBAT -> "combat"; case SPELLS -> "spells"; case SURVIVAL -> "survival"; };
-        Color accent = s.category().color;
-        double x = s.x(), fy = s.y() + 36;
-        if (w.player.skillPoints > 0) {
-            double r = 58 + 5 * Math.sin(w.time * 4);
-            g.setColor(Util.alpha(accent, 0.6));
-            g.setStroke(new BasicStroke(3f));
-            g.draw(new Ellipse2D.Double(x - r, fy - 16 - r * 0.42, r * 2, r * 0.84));
-        }
-        Art.frame("shop." + key, w.time + s.x() * 0.01, 1.6).draw(g, x, fy, Art.SCALE, false);
-        g.setFont(f12);
-        centered(g, s.name(), x, fy - 112, accent);
-        if (w.stationNearby() == s && w.state == World.State.PLAYING) {
-            g.setFont(f14b);
-            centered(g, "Press E to talk", x, fy + 26, Color.WHITE);
-        }
-    }
-
-    private void drawGuide(Graphics2D g, World w) {
-        Level lv = w.level;
-        double x = lv.guideX, y = lv.guideY;
-        Color green = new Color(70, 205, 95);
-        double r = 40 + 4 * Math.sin(w.time * 3);
-        g.setColor(Util.alpha(green, 0.45));
-        g.setStroke(new BasicStroke(2.5f));
-        g.draw(new Ellipse2D.Double(x - r, y + 20 - r * 0.45, r * 2, r * 0.9));
-        double hover = 7 + 3 * Math.sin(w.time * 3);
-        Art.frame("guide.idle", w.time, 2.2).draw(g, x, y + 20 - hover, Art.SCALE, false);
-        g.setFont(f12);
-        centered(g, "GUIDE", x, y - 74, green);
-        if (w.guideNearby() && w.state == World.State.PLAYING) {
-            g.setFont(f14b);
-            centered(g, "Press E to travel to the next level", x, y + 52, Color.WHITE);
-        }
-    }
-
-    /** Transit Town's train station: always standing there, shuttered until level 1 is done, then lit up and ready to go. */
-    private void drawStation(Graphics2D g, World w) {
-        Level lv = w.level;
-        double x = lv.guideX, y = lv.guideY;
-        boolean open = lv.guideAppeared;
-        if (open) {
-            double r = 46 + 4 * Math.sin(w.time * 3);
-            g.setColor(Util.alpha(new Color(255, 214, 110), 0.4));
-            g.setStroke(new BasicStroke(2.5f));
-            g.draw(new Ellipse2D.Double(x - r, y + 44 - r * 0.3, r * 2, r * 0.6));
-        }
-        Art.frame(open ? "station.open" : "station.closed", w.time, 2.2).draw(g, x, y + 44, Art.SCALE, false);
-        g.setFont(f12);
-        centered(g, "TRAIN STATION", x, y - 92, open ? new Color(255, 214, 110) : new Color(170, 170, 182));
-        if (!open) {
-            g.setFont(f14b);
-            centered(g, "Closed for now", x, y + 108, new Color(190, 190, 200));
-        } else if (w.guideNearby() && w.state == World.State.PLAYING) {
-            g.setFont(f14b);
-            centered(g, "Press E to catch the train", x, y + 108, Color.WHITE);
-        }
-    }
-
-    // ------------------------------------------------------------------ Transit Town: the locals and the way out
-
-    private void drawNpc(Graphics2D g, World w, Level.Npc npc) {
-        Sprite s = Art.frame(npc.portrait(), w.time + npc.x() * 0.01, 1.8);
-        s.draw(g, npc.x(), npc.y() + 20, Art.SCALE, false);
-        if (w.npcNearby() == npc && w.state == World.State.PLAYING && !w.dialogue.active()) {
-            g.setFont(f14b);
-            centered(g, "Press E to talk", npc.x(), npc.y() + 58, Color.WHITE);
-        }
-    }
-
-    /** No sprite, just the promise of trees (see the landmarks placed around it in {@link Level#town}) and a prompt up close. */
-    private void drawForestPath(Graphics2D g, World w) {
-        Level lv = w.level;
-        double x = lv.forestX, y = lv.forestY;
-        g.setFont(f12);
-        centered(g, "TO THE FOREST", x, y - 44, new Color(150, 210, 140));
-        if (w.forestPathNearby() && w.state == World.State.PLAYING) {
-            g.setFont(f14b);
-            centered(g, "Press E to head into the forest", x, y + 34, Color.WHITE);
-        }
-    }
-
-    /** "SEALED" beside the door, on the side of the room you can actually stand in. */
-    private void drawSealedLabel(Graphics2D g, Level.Door door) {
-        boolean farSide = door.a.gated;             // then the open room is b, whose barrier is the second one
-        Rectangle2D.Double bar = door.barriers.get(farSide ? 1 : 0);
-        double lx, ly;
-        if (door.vertical) {
-            lx = bar.getCenterX();
-            ly = farSide ? bar.getMaxY() + 22 : bar.y - 10;
-        } else {
-            lx = farSide ? bar.getMaxX() + 44 : bar.x - 44;
-            ly = bar.getCenterY() + 4;
-        }
-        g.setFont(f14b);
-        centered(g, "SEALED", lx, ly, new Color(206, 150, 255));
+        double tw = fm.stringWidth(what), total = 26 + 8 + tw;
+        double x0 = x - total / 2;
+        RoundRectangle2D cap = new RoundRectangle2D.Double(x0, y - 18, 26, 26, 7, 7);
+        g.setColor(new Color(20, 18, 30, 230));
+        g.fill(cap);
+        g.setColor(new Color(255, 214, 120));
+        g.setStroke(new BasicStroke(1.8f));
+        g.draw(cap);
+        g.setColor(Color.WHITE);
+        g.drawString("E", (float) (x0 + 13 - fm.stringWidth("E") / 2.0), (float) (y));
+        centered(g, what, x0 + 34 + tw / 2, y, Color.WHITE);
     }
 
     // ------------------------------------------------------------------ enemies
 
     private static String name(Enemy.Type t) {
-        return switch (t) { case GRUNT -> "grunt"; case RUNNER -> "runner"; case SHOOTER -> "shooter"; case BRUTE -> "brute"; case SHADE -> "shade"; case BOSS -> "boss"; };
+        return switch (t) { case GRUNT -> "grunt"; case RUNNER -> "runner"; case SHOOTER -> "shooter"; case BRUTE -> "brute"; case SHADE -> "shade"; case BOSS -> "boss"; case NEST -> "nest"; };
     }
 
     /** The sprite an enemy shows right now (its walk cycle, wind-up pose, boss attack pose...). */
@@ -402,6 +323,10 @@ final class WorldRenderer {
         String theme = w.level.theme.key;
         boolean moving = e.state == Enemy.State.CHASE && e.stun <= 0 && e.spawnIn <= 0;
         double t = w.time + e.animOffset;
+        if (e.rooted()) {
+            String key = Art.has(theme + ".nest.idle") ? theme + ".nest.idle" : "forest.nest.idle";
+            return Art.frame(key, t, e.awake ? 5 : 2);
+        }
         if (e.type == Enemy.Type.BOSS) {
             String base = theme + (e.phase2 ? ".boss2." : ".boss.");
             if (e.state == Enemy.State.WINDUP) return Art.frames(base + (e.attack == Enemy.Attack.SLAM ? "slam" : "burst"))[0];
@@ -451,39 +376,9 @@ final class WorldRenderer {
             g.setStroke(new BasicStroke(3f));
             g.draw(new Ellipse2D.Double(x - ring, e.y - ring, ring * 2, ring * 2));
         }
-        if (e.shielded) drawShell(g, w, e);
         if (e.burnTimer > 0) s.drawSilhouette(g, x, fy, sc, e.faceLeft, 0xFF8A20, (float) (0.28 + 0.16 * Math.sin(w.time * 20)));
         if (e.slowTimer > 0) s.drawSilhouette(g, x, fy, sc, e.faceLeft, 0x7CC8FF, 0.32f);
         if (e.type.shadowy) drawShadowClock(g, e);
-    }
-
-    /** The tutorial monster curled up: a dome of woven thorns around it. Swords bounce off; magic breaks it. */
-    private void drawShell(Graphics2D g, World w, Enemy e) {
-        double r = e.radius + 12, cy = e.y - 2;
-        Ellipse2D dome = new Ellipse2D.Double(e.x - r, cy - r, r * 2, r * 2);
-        g.setColor(new Color(70, 140, 60, 120));
-        g.fill(dome);
-        g.setColor(new Color(40, 90, 40, 230));
-        g.setStroke(new BasicStroke(4f));
-        g.draw(dome);
-        g.setStroke(new BasicStroke(2f));
-        g.setColor(new Color(120, 190, 90, 200));
-        for (int i = 0; i < 3; i++) g.draw(new Ellipse2D.Double(e.x - r * (0.9 - 0.3 * i), cy - r, r * (1.8 - 0.6 * i), r * 2));   // woven ribs
-        int thorns = 12;
-        for (int i = 0; i < thorns; i++) {
-            double a = i * Math.PI * 2 / thorns + w.time * 0.3, in = r - 2, out = r + 12 + 2 * Math.sin(w.time * 5 + i);
-            double half = 0.13;
-            Path2D spike = new Path2D.Double();
-            spike.moveTo(e.x + Math.cos(a - half) * in, cy + Math.sin(a - half) * in);
-            spike.lineTo(e.x + Math.cos(a) * out, cy + Math.sin(a) * out);
-            spike.lineTo(e.x + Math.cos(a + half) * in, cy + Math.sin(a + half) * in);
-            spike.closePath();
-            g.setColor(new Color(96, 66, 40));
-            g.fill(spike);
-            g.setColor(new Color(40, 28, 20));
-            g.setStroke(new BasicStroke(1.5f));
-            g.draw(spike);
-        }
     }
 
     /** The danger area of an attack that's winding up (readable through the sprites). */
@@ -599,7 +494,7 @@ final class WorldRenderer {
         Art.frame(name, w.time, 8).draw(g, p.x, p.y, Art.SCALE, false, 0, 1f);
     }
 
-    // ------------------------------------------------------------------ roguelike runs
+    // ------------------------------------------------------------------ fights: skills, pickups, the ring
 
     /** Crescent Wave: a pale blue crescent of light, fading as it flies. */
     private void drawWave(Graphics2D g, Projectile p) {
@@ -668,8 +563,14 @@ final class WorldRenderer {
             g.draw(new Ellipse2D.Double(pk.x - r, pk.y - r * 0.35, r * 2, r * 0.7));
             Art.frame("run.portal", w.time, 10).draw(g, pk.x, pk.y, Art.SCALE, false, 0, ready ? 1f : 0.45f);
             g.setFont(f14b);
-            centered(g, ready ? (run.stage + 1 >= Run.STAGES ? "HOME" : "STAGE " + (run.stage + 2)) : "Open the chest first", pk.x, pk.y - 116,
+            centered(g, ready ? "BACK TO THE FOREST" : "Open the chest first", pk.x, pk.y - 116,
                 ready ? new Color(220, 190, 255) : new Color(200, 200, 210));
+            return;
+        }
+        if (pk.kind == Pickup.Kind.CACHE) {                                     // a cache: a plain chest with its price over it
+            Art.frames("run.chest.elite")[0].draw(g, pk.x, pk.y, Art.SCALE, false, 0, 0.9f);
+            g.setFont(f14b);
+            centered(g, pk.value + " G", pk.x, pk.y - 70, run.gold >= pk.value ? new Color(255, 214, 90) : new Color(200, 160, 150));
             return;
         }
         boolean boss = pk.kind == Pickup.Kind.BOSS_CHEST;

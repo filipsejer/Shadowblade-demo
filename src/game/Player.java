@@ -2,8 +2,6 @@ package game;
 
 import java.awt.Color;
 import java.awt.event.KeyEvent;
-import java.util.HashMap;
-import java.util.Map;
 
 final class Player {
     static final Color COLOR = new Color(58, 118, 255);
@@ -11,12 +9,6 @@ final class Player {
     static final double DASH_OVERSHOOT = 26;       // how far past the enemy's far edge you land
     static final double DODGE_TIME = 0.26;
     static final double DODGE_SPEED = 640;
-    /**
-     * Roll distance bonuses (same duration, so the roll is faster): {@link #ROLL_BONUS} times as far from character
-     * level 5, and {@link #ROLL_BONUS_2} times as far from level 10.
-     */
-    static final int ROLL_BONUS_LEVEL = 5, ROLL_BONUS_LEVEL_2 = 10;
-    static final double ROLL_BONUS = 1.45, ROLL_BONUS_2 = 1.9;
     static final double COMBO_WINDOW = 0.45;       // time to press ENTER again to continue a chain
     static final double INPUT_BUFFER = 0.22;
     static final double LAUNCH_VZ = 560;           // a combo's finishing hit launches enemies into the air by this much (see Enemy.launch)
@@ -27,26 +19,23 @@ final class Player {
     double facing;
 
     double hp = 100, maxHp = 100;
-    double mp = 100, maxMp = 100, mpRegen = 5;
     double moveSpeed = 230;
 
-    // progression
-    int level = 1, xp = 0, xpNext = 40;
-    int skillPoints = 0;                          // earned by levelling up, spent at the upgrade station
-    final Map<String, Integer> ranks = new HashMap<>();
+    // a fight's level (it starts again from 1 every fight)
+    int level = 1, xp = 0, xpNext = Run.xpFor(1);
 
     // melee stats
     double meleeDamage = 10, meleeMult = 1, attackSpeed = 1, reachMult = 1;
     int comboMax = 2;
-    double hpPerHit = 0, mpPerHit = 3;
+    double hpPerHit = 0;
 
     // spell stats
     double spellPower = 1, cooldownMult = 1;
 
-    // roguelike runs (see Run / Perk / Arsenal): what you've picked, and the stats picks and gear raise
+    // a fight's picks (see Run / Perk / Arsenal), and the stats picks, gear and masteries raise
     final int[] perk = new int[Perk.values().length];
     final double[] skillCd = new double[Perk.values().length];
-    /** False at the start of a run: the roll is a level-up pick there. Always true in the campaign. */
+    /** False at the start of a fight: the roll is a level-up pick there (or a mastery). Always true in the world. */
     boolean rollUnlocked = true;
     double rollBonus = 1;
     double critChance = 0, critMult = 1.8;
@@ -57,9 +46,6 @@ final class Player {
     double magnet = 110;
     double xpMult = 1, goldMult = 1;
     double orbitAngle, auraTick, waveCd;
-    final CommandMenu menu = new CommandMenu();
-    final int[] spellLevel = new int[Ability.values().length];   // 0 = not learned
-    final double[] cooldown = new double[Ability.values().length];
 
     // dodge
     double dodgeCooldown = 0.75;
@@ -83,26 +69,15 @@ final class Player {
     Player(double x, double y) {
         this.x = x;
         this.y = y;
-        unlockSpell(Ability.FIREBALL);
     }
-
-    int rank(String id) { return ranks.getOrDefault(id, 0); }
 
     boolean dodging() { return dodgeTimer > 0; }
 
-    /** 1 normally; {@link #ROLL_BONUS} from level 5; {@link #ROLL_BONUS_2} from level 10. */
-    double rollDistanceMult() {
-        return (level >= ROLL_BONUS_LEVEL_2 ? ROLL_BONUS_2 : level >= ROLL_BONUS_LEVEL ? ROLL_BONUS : 1.0) * rollBonus;
-    }
+    /** How much further than usual a roll carries you (Evasive Roll's last rank). */
+    double rollDistanceMult() { return rollBonus; }
 
     /** How far a roll carries you, in pixels. */
     double rollDistance() { return DODGE_SPEED * DODGE_TIME * rollDistanceMult(); }
-
-    /** Cuts a roll short (the tutorial's tree). */
-    void stopRoll() {
-        dodgeTimer = 0;
-        invuln = 0;
-    }
 
     boolean swinging() { return swingTimer > 0; }
 
@@ -121,18 +96,6 @@ final class Player {
         return comboTimer > 0 ? nextCombo : 0;
     }
 
-    /** Learns a spell; it then shows up in the Magic menu. */
-    void unlockSpell(Ability a) {
-        spellLevel[a.ordinal()] = 1;
-    }
-
-    /** The spells you know, in the order they appear in the Magic menu. */
-    java.util.List<Ability> learnedSpells() {
-        java.util.List<Ability> out = new java.util.ArrayList<>();
-        for (Ability a : Ability.values()) if (spellLevel[a.ordinal()] > 0) out.add(a);
-        return out;
-    }
-
     void update(World w, Input in, double dt) {
         lastX = x;
         lastY = y;
@@ -143,29 +106,10 @@ final class Player {
         attackLock = Math.max(0, attackLock - dt);
         attackBuffer -= dt;
         dodgeBuffer -= dt;
-        for (int i = 0; i < cooldown.length; i++) cooldown[i] = Math.max(0, cooldown[i] - dt);
-        mp = Math.min(maxMp, mp + mpRegen * dt);
 
-        CommandMenu.Result command;
-        if (w.run != null) {
-            // a run has no command menu (skills fire on their own): ENTER (or J) attacks, and holding it keeps swinging.
-            // The level-up cards are taken with the number keys, so a held attack can never pick one by accident
-            command = CommandMenu.Result.NOTHING;
-            if (in.pressed(KeyEvent.VK_ENTER) || in.down(KeyEvent.VK_ENTER) || in.pressed(KeyEvent.VK_J) || in.down(KeyEvent.VK_J)) attackBuffer = INPUT_BUFFER;
-        } else {
-            // the command menu turns ENTER / arrow presses into "attack" or "cast this spell"
-            CommandMenu.Item cursorBefore = menu.cursor;
-            boolean openBefore = menu.magicOpen, shiftBefore = menu.shiftOpened;
-            int spellBefore = menu.spellCursor;
-            command = menu.update(in, learnedSpells());
-            if (menu.magicOpen != openBefore) {
-                if (menu.magicOpen) w.sound(Snd.MENU_OPEN);
-                else if (!shiftBefore) w.sound(Snd.MENU_BACK);          // letting go of Shift closes the list quietly
-            } else if (menu.cursor != cursorBefore || menu.spellCursor != spellBefore) {
-                w.sound(Snd.MENU_MOVE);
-            }
-            if (command.attackPressed()) attackBuffer = INPUT_BUFFER;
-        }
+        // ENTER (or J) attacks, and holding it keeps swinging; skills fire on their own. The level-up cards are taken
+        // with the number keys, so a held attack can never pick one by accident
+        if (in.pressed(KeyEvent.VK_ENTER) || in.down(KeyEvent.VK_ENTER) || in.pressed(KeyEvent.VK_J) || in.down(KeyEvent.VK_J)) attackBuffer = INPUT_BUFFER;
         if (in.pressed(KeyEvent.VK_SPACE) && rollUnlocked) dodgeBuffer = INPUT_BUFFER;
 
         double ix = (in.down(KeyEvent.VK_D) ? 1 : 0) - (in.down(KeyEvent.VK_A) ? 1 : 0);
@@ -184,8 +128,6 @@ final class Player {
         double drag = Math.exp(-10 * dt);
         kx *= drag;
         ky *= drag;
-
-        if (command.cast() != null) menu.castResult(command.cast(), !dodging() && tryCast(w, command.cast()));
 
         if (dodgeBuffer > 0 && dodgeCd <= 0 && !dodging()) startDodge(w, ix, iy, moving);
 
@@ -247,7 +189,7 @@ final class Player {
             if (stepTimer <= 0) {
                 stepTimer += 0.31;
                 Level.Room here = w.level.roomAt(x, y, 0);
-                boolean stone = !w.forest() || here == null || here.name.equals("HUB");     // hard ground: city streets and the hub plaza
+                boolean stone = !w.forest() || here == null || here.state == Level.Room.State.SAFE;     // hard ground: city streets, the camp's paving
                 w.soundAt(stone ? Snd.STEP_STONE : Snd.STEP_GRASS, x, y);
             }
         } else {
@@ -327,7 +269,6 @@ final class Player {
                 double tolerance = half + Math.asin(Math.min(1, e.radius / d)); // fat enemies are easier to clip
                 if (Math.abs(Util.angleDiff(facing, ang)) > tolerance) continue;
             }
-            if (e.shielded) { e.bounce(w); continue; }                     // a thorny shell: the blow glances off
             boolean crit = w.rng.nextDouble() < critChance;
             double dmg = base * (0.92 + w.rng.nextDouble() * 0.16) * (crit ? critMult : 1);
             double kb = hitFinisher ? 430 : 150;
@@ -358,7 +299,6 @@ final class Player {
 
         w.effects.add(Effect.slash(x, y, facing, half, reach + 10, hitFinisher ? new Color(255, 220, 120) : COLOR));
         if (hits > 0) {
-            mp = Math.min(maxMp, mp + mpPerHit);
             hp = Math.min(maxHp, hp + hpPerHit);
             w.hitStop = Math.max(w.hitStop, hitFinisher ? 0.07 : 0.035);
             w.shake = Math.max(w.shake, hitFinisher ? 6 : 2);
@@ -386,30 +326,6 @@ final class Player {
         comboTimer = 0;
         nextCombo = 0;
         attackBuffer = 0;
-    }
-
-    /** Casts a spell if it's off cooldown, you can afford it and it has something to do. Costs MP only on success. */
-    private boolean tryCast(World w, Ability a) {
-        int lv = spellLevel[a.ordinal()];
-        if (lv == 0) return false;
-        double cost = a.cost(lv);
-        if (cooldown[a.ordinal()] > 0) {
-            w.effects.add(Effect.text(x, y - 30, "Cooling down", new Color(200, 200, 210), false));
-            w.sound(Snd.SPELL_FAIL);
-            return false;
-        }
-        if (mp < cost) {
-            w.effects.add(Effect.text(x, y - 30, "Not enough MP", new Color(110, 160, 255), false));
-            w.sound(Snd.SPELL_FAIL);
-            return false;
-        }
-        if (!Spells.cast(w, this, a, lv)) {
-            w.sound(Snd.SPELL_FAIL);
-            return false;
-        }
-        mp -= cost;
-        cooldown[a.ordinal()] = a.cooldown * cooldownMult;
-        return true;
     }
 
     void heal(World w, double amount) {

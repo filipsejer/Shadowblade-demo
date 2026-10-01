@@ -1,13 +1,15 @@
 package game;
 
 /**
- * Something lying on the ground in a roguelike run, waiting to be walked over: XP gems (dropped by every enemy), gold,
- * and the rarer things crates hold. Gems and gold are pulled in once you're within your pickup range; the rest you have
- * to actually step on. Chests are dropped by elites and bosses; the portal takes you to the next stage.
+ * Something lying on the ground in a fight, waiting to be walked over: XP gems (dropped by every enemy), gold, and the
+ * rarer things crates hold. Gems and gold are pulled in once you're within your pickup range; the rest you have to
+ * actually step on. Chests are dropped by elites and the guardian; caches wait to be bought; the portal leads home.
  */
 final class Pickup {
     enum Kind {
-        GEM, COIN, HEART, MAGNET, BOMB, ELITE_CHEST, BOSS_CHEST, PORTAL;
+        GEM, COIN, HEART, MAGNET, BOMB, ELITE_CHEST, BOSS_CHEST, PORTAL,
+        /** A cache on a battlefield: opened with E for gold (its price is the pickup's value), it holds a free pick. */
+        CACHE;
 
         /** Pulled toward you by your pickup range (the others need to be touched). */
         boolean magnetic() { return this == GEM || this == COIN; }
@@ -35,7 +37,7 @@ final class Pickup {
 
     double radius() {
         return switch (kind) {
-            case ELITE_CHEST, BOSS_CHEST -> 30;
+            case ELITE_CHEST, BOSS_CHEST, CACHE -> 30;
             case PORTAL -> 46;
             default -> 18;
         };

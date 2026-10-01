@@ -22,9 +22,9 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Everything drawn in screen space for the roguelike side of the game: a run's HUD (XP bar, clock, skill
- * slots, arrows to chests), the level-up cards, a run's pause menu and the results screen. The campaign's
- * HUD and menus stay in {@link Renderer}, which hands over to this class whenever a run is up; the main menu is {@link TitleScreen}.
+ * Everything drawn in screen space during a fight: the HUD (XP bar, the objective and the danger clock, skill slots,
+ * arrows to nests and chests), the level-up cards, the fight's pause menu and the results screen. The world's own
+ * screens are {@link WorldHud}'s; the main menu is {@link TitleScreen}.
  */
 final class RunHud {
     private final Font f12 = new Font(Font.SANS_SERIF, Font.PLAIN, 12);
@@ -74,18 +74,19 @@ final class RunHud {
             g.drawString("PHOENIX READY", 210, 70);
         }
 
-        // the clock (top centre)
+        // the objective and the danger clock (top centre)
         Enemy boss = w.boss();
-        double left = Run.STAGE_TIME - run.stageTime;
         g.setFont(f30b);
-        String clock = run.bossDead ? "CLEARED" : boss != null ? "BOSS" : Run.clock(Math.max(0, run.stageTime));
-        centered(g, clock, width / 2.0, 52, run.bossDead ? new Color(150, 240, 150) : boss != null ? new Color(255, 110, 110) : Color.WHITE);
-        g.setFont(f12);
-        centered(g, "STAGE " + (run.stage + 1) + " / " + Run.STAGES + "   -   " + w.level.theme.title.toUpperCase(), width / 2.0, 70, new Color(215, 215, 228));
-        if (!run.bossSpawned && left <= Run.BOSS_WARNING && left > 0) {
+        String goal = run.bossDead ? "CLEARED" : boss != null ? "GUARDIAN" : run.bossWarning > 0 ? "..." : "NESTS  " + (run.nestsTotal - run.nestsLeft) + " / " + run.nestsTotal;
+        centered(g, goal, width / 2.0, 52, run.bossDead ? new Color(150, 240, 150) : boss != null ? new Color(255, 110, 110) : Color.WHITE);
+        g.setFont(f12b);
+        String danger = run.dangerLabel();
+        Color dc = switch (danger) { case "EASY" -> new Color(140, 230, 140); case "MEDIUM" -> new Color(240, 220, 120); case "HARD" -> new Color(255, 160, 80); default -> new Color(255, 90, 90); };
+        centered(g, run.challenge.title + "   -   " + Run.clock(run.time) + "   -   DANGER: " + danger, width / 2.0, 70, dc);
+        if (run.bossWarning > 0) {
             g.setFont(f22b);
             double k = 0.5 + 0.5 * Math.sin(w.time * 10);
-            centered(g, w.level.bossName + " APPROACHES   " + (int) Math.ceil(left), width / 2.0, 100, Util.alpha(new Color(255, 90, 90), 0.6 + 0.4 * k));
+            centered(g, w.level.bossName + " AWAKENS", width / 2.0, 100, Util.alpha(new Color(255, 90, 90), 0.6 + 0.4 * k));
         }
         if (boss != null) {
             double bw = Math.min(560, width - 520), bx = (width - bw) / 2;
@@ -179,27 +180,32 @@ final class RunHud {
                 default -> null;
             };
             if (c == null) continue;
-            double sx = pk.x - left, sy = pk.y - top;
-            if (sx > 30 && sx < width - 30 && sy > 30 && sy < height - 30) continue;
-            double cx = width / 2.0, cy = height / 2.0;
-            double ang = Math.atan2(sy - cy, sx - cx);
-            double ex = Util.clamp(sx, 40, width - 40), ey = Util.clamp(sy, 110, height - 130);
-            AffineTransform saved = g.getTransform();
-            g.translate(ex, ey);
-            g.rotate(ang);
-            Path2D arrow = new Path2D.Double();
-            arrow.moveTo(16, 0);
-            arrow.lineTo(-10, -11);
-            arrow.lineTo(-5, 0);
-            arrow.lineTo(-10, 11);
-            arrow.closePath();
-            g.setColor(new Color(0, 0, 0, 160));
-            g.setStroke(new BasicStroke(4f));
-            g.draw(arrow);
-            g.setColor(c);
-            g.fill(arrow);
-            g.setTransform(saved);
+            arrow(g, pk.x - left, pk.y - top, c, width, height);
         }
+        for (Enemy e : w.enemies) if (e.rooted() && e.hp > 0) arrow(g, e.x - left, e.y - top, new Color(230, 110, 255), width, height);
+    }
+
+    /** An arrow at the screen's edge pointing at something off-screen, at (sx, sy) in screen terms. */
+    private void arrow(Graphics2D g, double sx, double sy, Color c, int width, int height) {
+        if (sx > 30 && sx < width - 30 && sy > 30 && sy < height - 30) return;
+        double cx = width / 2.0, cy = height / 2.0;
+        double ang = Math.atan2(sy - cy, sx - cx);
+        double ex = Util.clamp(sx, 40, width - 40), ey = Util.clamp(sy, 110, height - 130);
+        AffineTransform saved = g.getTransform();
+        g.translate(ex, ey);
+        g.rotate(ang);
+        Path2D arrow = new Path2D.Double();
+        arrow.moveTo(16, 0);
+        arrow.lineTo(-10, -11);
+        arrow.lineTo(-5, 0);
+        arrow.lineTo(-10, 11);
+        arrow.closePath();
+        g.setColor(new Color(0, 0, 0, 160));
+        g.setStroke(new BasicStroke(4f));
+        g.draw(arrow);
+        g.setColor(c);
+        g.fill(arrow);
+        g.setTransform(saved);
     }
 
     // ------------------------------------------------------------------ level-up choices
@@ -337,7 +343,7 @@ final class RunHud {
     // ------------------------------------------------------------------ a run's pause menu
 
     /**
-     * A run's pause menu, laid out like the title screens: the heading and where you are on the left, the rows (the
+     * A fight's pause menu, laid out like the title screens: the heading and how it's going on the left, the rows (the
      * volumes as sliders), and a card on the right with the build you've put together so far.
      */
     void drawRunPause(Graphics2D g, World w, int width, int height) {
@@ -351,31 +357,32 @@ final class RunHud {
 
         double base = height * 0.2 + 12 * s;
         java.awt.geom.Rectangle2D hb = MenuStyle.heading(g, "PAUSED", x0, base, 76 * s, s).getBounds2D();
-        MenuStyle.ruled(g, "STAGE " + (run.stage + 1) + DOT + Run.clock(run.stageTime), hb.getCenterX(), base + 36 * s, hb.getX(), hb.getMaxX(), 17 * s, s);
+        MenuStyle.ruled(g, run.challenge.title, hb.getCenterX(), base + 36 * s, hb.getX(), Math.max(hb.getMaxX(), hb.getX() + 10), 17 * s, s);
         g.setFont(MenuStyle.serif(Font.ITALIC, 16 * s, 0));
-        String status = "Level " + p.level + DOT + w.kills + " kills" + DOT + run.gold + " gold" + DOT + run.loot.size() + " item" + (run.loot.size() == 1 ? "" : "s") + " found";
+        String status = "Level " + p.level + DOT + "nests " + (run.nestsTotal - run.nestsLeft) + " / " + run.nestsTotal + DOT + run.gold + " gold" + DOT
+            + run.loot.size() + " item" + (run.loot.size() == 1 ? "" : "s") + " found";
         MenuStyle.shadowed(g, status, x0, base + 66 * s, new Color(214, 206, 228, 220));
 
+        String[] rows = World.FIGHT_PAUSE;
         double y0 = base + 128 * s, rowH = 52 * s, rowSize = 27 * s;
-        int sel = w.pauseCursor;
-        boolean warn = sel == 4 && w.confirmAbandon;
-        String[] details = {null, null, null, "saved for CONTINUE", null};
-        MenuStyle.rows(g, pauseGlide, World.RUN_PAUSE, details, null, sel, warn, x0, y0, rowH, rowSize, 470 * s, s, w.time);
-        g.setFont(MenuStyle.serif(Font.BOLD, rowSize, 0.08));                    // the volume sliders, after their labels
+        int sel = Math.min(w.pauseCursor, rows.length - 1);
+        boolean warn = rows[sel].equals("RETREAT") && w.confirmRetreat;
+        MenuStyle.rows(g, pauseGlide, rows, null, null, sel, warn, x0, y0, rowH, rowSize, 470 * s, s, w.time);
+        g.setFont(MenuStyle.serif(Font.BOLD, rowSize, 0.08));
         FontMetrics fm = g.getFontMetrics();
         int[] volumes = {w.audio.music, w.audio.sfx};
         for (int i = 1; i <= 2; i++) {
-            double lx = x0 + pauseGlide.slide(i) + fm.stringWidth(World.RUN_PAUSE[i]) + 22 * s, ly = y0 + i * rowH + rowH * 0.18 - 9 * s;
+            double lx = x0 + pauseGlide.slide(i) + fm.stringWidth(rows[i]) + 22 * s, ly = y0 + i * rowH + rowH * 0.18 - 9 * s;
             MenuStyle.slider(g, lx, ly, volumes[i - 1], sel == i, s);
         }
         String[] info = {
             "Back to the fight.",
             "The music's volume. LEFT and RIGHT change it; M mutes everything.",
             "The volume of the sound effects. LEFT and RIGHT change it.",
-            "Save this run and go back to the main menu. CONTINUE picks it up where you left off.",
-            warn ? "Press ENTER again to end the run. You keep the gold and the items you've found." : "End the run here. You keep the gold and the items you've found.",
+            warn ? "Press ENTER again to leave. You keep the gold and items you've found, but the challenge isn't cleared."
+                : "Leave the fight and go back to the forest. You keep the gold and items you've found.",
         };
-        MenuStyle.infoLine(g, info[sel], x0, y0 + World.RUN_PAUSE.length * rowH + 12 * s, 380 * s, s, warn);
+        MenuStyle.infoLine(g, info[sel], x0, y0 + rows.length * rowH + 12 * s, 380 * s, s, warn);
         MenuStyle.keys(g, x0, height - 30 * s, s, new String[][]{{"W", "S"}, {"A", "D"}, {"ENTER"}, {"ESC"}}, new String[]{"Navigate", "Volume", "Select", "Resume"});
         drawBuildCard(g, p, width, height, s);
     }
@@ -438,8 +445,8 @@ final class RunHud {
     // ------------------------------------------------------------------ the end of a run
 
     /**
-     * The results: VICTORY in gold or DEFEATED in blood red, a row of stat tiles, the gold you bring home, and every
-     * item found as a small card tinted in its rarity.
+     * The results: VICTORY in gold, or DEFEATED / RETREATED in blood red; a row of stat tiles; what you take home
+     * (gold, skill points for a win) and every item found as a small card tinted in its rarity.
      */
     void drawRunEnd(Graphics2D g, World w, int width, int height) {
         MenuStyle.antialias(g);
@@ -447,24 +454,25 @@ final class RunHud {
         Run run = w.run;
         Player p = w.player;
         double s = MenuStyle.scale(height), cx = width / 2.0;
+        boolean won = run.outcome == Run.Outcome.VICTORY;
 
         double base = height * 0.17 + 8 * s;
-        java.awt.geom.Rectangle2D hb = MenuStyle.headingCentred(g, run.victory ? "VICTORY" : "DEFEATED", cx, base, 80 * s, s, !run.victory).getBounds2D();
-        MenuStyle.ruled(g, run.victory ? "ALL THREE BOSSES HAVE FALLEN" : "FALLEN ON STAGE " + (run.stage + 1), cx, base + 38 * s,
-            hb.getX() - 80 * s, hb.getMaxX() + 80 * s, 16 * s, s);
+        String head = won ? "VICTORY" : run.outcome == Run.Outcome.RETREAT ? "RETREATED" : "DEFEATED";
+        java.awt.geom.Rectangle2D hb = MenuStyle.headingCentred(g, head, cx, base, 80 * s, s, !won).getBounds2D();
+        MenuStyle.ruled(g, won ? run.challenge.title + (run.firstClear ? DOT + "CLEARED" : DOT + "CLEARED AGAIN") : run.challenge.title,
+            cx, base + 38 * s, hb.getX() - 80 * s, hb.getMaxX() + 80 * s, 16 * s, s);
         g.setFont(MenuStyle.serif(Font.ITALIC, 17 * s, 0));
-        MenuStyle.centred(g, run.victory ? "The portal takes you home, and everything you found comes with you." : "The horde wins this time. Everything you found is yours to keep.",
-            cx, base + 68 * s, new Color(214, 206, 228, 225));
+        MenuStyle.centred(g, won ? "The Blight withers. The light takes you back to the forest, with everything you found."
+                : "You make it back to the forest. Everything you found is yours to keep.", cx, base + 68 * s, new Color(214, 206, 228, 225));
 
-        // the numbers, as a row of tiles
         String[][] tiles = {
-            {(run.stage + 1) + " / " + Run.STAGES, "STAGE"}, {Run.clock(run.runTime), "TIME"}, {String.valueOf(p.level), "LEVEL"},
-            {String.valueOf(w.kills), "KILLS"}, {String.valueOf(run.elitesKilled), "ELITES"}, {String.valueOf(run.bossesKilled), "BOSSES"},
+            {Run.clock(run.time), "TIME"}, {String.valueOf(p.level), "LEVEL"}, {String.valueOf(w.kills), "KILLS"},
+            {(run.nestsTotal - run.nestsLeft) + " / " + run.nestsTotal, "NESTS"}, {String.valueOf(run.elitesKilled), "ELITES"}, {run.dangerLabel(), "DANGER"},
         };
-        double tw = 112 * s, ty = base + 104 * s, tx0 = cx - tiles.length * tw / 2;
+        double tw = 118 * s, ty = base + 104 * s, tx0 = cx - tiles.length * tw / 2;
         for (int i = 0; i < tiles.length; i++) {
             double tcx = tx0 + i * tw + tw / 2;
-            g.setFont(MenuStyle.serif(Font.BOLD, 30 * s, 0.02));
+            g.setFont(MenuStyle.serif(Font.BOLD, tiles[i][0].length() > 6 ? 20 * s : 30 * s, 0.02));
             MenuStyle.centred(g, tiles[i][0], tcx, ty + 28 * s, Color.WHITE);
             g.setFont(MenuStyle.caps(10 * s));
             MenuStyle.centred(g, tiles[i][1], tcx, ty + 48 * s, MenuStyle.DIM);
@@ -474,23 +482,25 @@ final class RunHud {
             }
         }
 
-        // the gold you bring home
+        // what you take home
         double gy = ty + 94 * s;
         g.setFont(MenuStyle.serif(Font.BOLD, 26 * s, 0.03));
-        String goldText = "+" + run.gold + " gold";
+        String goldText = "+" + (run.gold + run.rewardGold) + " gold" + (run.rewardSkillPoints > 0 ? "      +" + run.rewardSkillPoints + " skill point" + (run.rewardSkillPoints == 1 ? "" : "s") : "");
         FontMetrics gm = g.getFontMetrics();
         double gw = gm.stringWidth(goldText) + 30 * s;
         Art.frame("run.coin", System.nanoTime() / 1e9, 6).draw(g, cx - gw / 2 + 8 * s, gy - 8 * s, 3.4 * s, false);
         MenuStyle.shadowed(g, goldText, cx - gw / 2 + 30 * s, gy, GOLD);
+        if (won) {
+            g.setFont(MenuStyle.sans(Font.PLAIN, 13 * s));
+            MenuStyle.centred(g, run.gold + " picked up" + DOT + run.rewardGold + " reward" + (run.rewardSkillPoints > 0 ? DOT + "spend skill points with Ranger Ash" : ""),
+                cx, gy + 22 * s, MenuStyle.DIM);
+        }
 
-        // the loot
-        List<Item> all = new ArrayList<>(run.loot);
-        all.addAll(run.bonusLoot);
-        double ly = gy + 36 * s;
+        List<Item> all = run.loot;
+        double ly = gy + 46 * s;
         if (all.isEmpty()) {
             g.setFont(MenuStyle.serif(Font.ITALIC, 16 * s, 0));
-            MenuStyle.centred(g, "No items found this time. Elites and bosses carry them.", cx, ly + 20 * s, MenuStyle.DIM);
-            ly += 40 * s;
+            MenuStyle.centred(g, "No items this time. Chests, caches and the guardian carry them.", cx, ly + 20 * s, MenuStyle.DIM);
         } else {
             MenuStyle.ruled(g, "LOOT", cx, ly + 8 * s, cx - 300 * s, cx + 300 * s, 14 * s, s);
             ly += 24 * s;
@@ -500,24 +510,11 @@ final class RunHud {
             for (int i = 0; i < shown; i++) {
                 Item it = all.get(i);
                 double ix = cx - cols * colW / 2 + (i % cols) * colW, iy = ly + (i / cols) * rowH;
-                itemChip(g, it, ix + 6 * s, iy, colW - 12 * s, rowH - 10 * s, run.bonusLoot.contains(it) ? (run.victory ? "BONUS" : "CONSOLATION") : null, s);
+                itemChip(g, it, ix + 6 * s, iy, colW - 12 * s, rowH - 10 * s, null, s);
             }
-            if (all.size() > shown) {
-                g.setFont(MenuStyle.serif(Font.ITALIC, 14 * s, 0));
-                MenuStyle.centred(g, "and " + (all.size() - shown) + " more in the Armory", cx, ly + ((shown + cols - 1) / cols) * rowH + 10 * s, MenuStyle.DIM);
-            }
-            ly += ((shown + cols - 1) / cols) * rowH + (all.size() > shown ? 20 * s : 0);
-        }
-        if (!run.records.isEmpty()) {
-            g.setFont(MenuStyle.caps(12 * s));
-            String rec = "NEW RECORD" + DOT + String.join(DOT, run.records).toUpperCase();
-            double rw = g.getFontMetrics().stringWidth(rec);
-            MenuStyle.diamond(g, cx - rw / 2 - 14 * s, ly + 10 * s, 4.5 * s, new Color(140, 240, 160));
-            MenuStyle.diamond(g, cx + rw / 2 + 14 * s, ly + 10 * s, 4.5 * s, new Color(140, 240, 160));
-            MenuStyle.centred(g, rec, cx, ly + 14 * s, new Color(140, 240, 160));
         }
         String[][] groups = {{"ENTER"}};
-        String[] labels = {"Back to the main menu"};
+        String[] labels = {"Back to the forest"};
         java.awt.Composite saved = g.getComposite();
         if (w.overTimer > 0) g.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 0.35f));   // not yet
         MenuStyle.keys(g, cx - MenuStyle.keysWidth(g, s, groups, labels) / 2, height - 30 * s, s, groups, labels);

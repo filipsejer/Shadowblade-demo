@@ -25,8 +25,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The look shared by the menus that sit on the title backdrop (the main menu, the Classic Campaign's two screens, the
- * Armory): gold serif headings with a dark edge and a warm glow, a subtitle between two rules, rows of serif text with
+ * The look every screen shares (the main menu, the Armory, the pause menus, the trainer's and merchant's screens, the
+ * level-up cards, the results): gold serif headings with a dark edge and a warm glow, a subtitle between two rules, rows of serif text with
  * a gold bar gliding to the selected one, key caps, and dark glass cards with a thin gold border. Everything is sized
  * by {@link #scale} so it grows and shrinks with the window.
  */

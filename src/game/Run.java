@@ -3,55 +3,56 @@ package game;
 import java.awt.Color;
 import java.awt.event.KeyEvent;
 import java.io.IOException;
-import java.io.Reader;
-import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
 import java.util.Random;
 
 /**
- * One roguelike run, in the style of Survivor.io / Megabonk: three stages (the forest, the city, the laboratory), each
- * an open arena where monsters keep pouring in from off-screen for {@value #STAGE_TIME} seconds. They get tougher the
- * longer you last and the higher your level. Two elites crash in partway through each stage, and when the clock runs
- * out the stage's boss arrives inside a ring you can't leave. Beat it, open its chest, step through the portal.
+ * One fight: a {@link Challenge} on its battlefield ({@link Battlefield}), in the style of Survivor.io and Risk of Rain.
+ * You start with only your sword (plus your gear and {@link Mastery} ranks). Every enemy drops an XP gem, and each
+ * level-up offers a choice of {@link Perk}s; all of that is gone when the fight ends. The horde never stops coming,
+ * and it gets tougher the longer you take (the danger clock).
  *
- * <p>Every enemy drops an XP gem; enough XP levels you up, and each level-up offers a choice of {@link Perk}s. You start
- * with nothing but the sword. Chests hold {@link Item}s, kept after the run (win or lose) along with the gold you
- * picked up. {@link World} runs the fight itself; this class is the director on top: the clock, spawning, drops,
- * pickups, the ring, choices, and the end of the run.
+ * <p>The goal: destroy the Blight's nests, spread across the map (each one spits out guards when you come near).
+ * With the last one down, the challenge's guardian arrives inside a ring you can't leave, if it has one. Then a chest
+ * and the way home. Along the way: elites with chests, crates with pickups, and caches you can open with the gold
+ * you've picked up. Gold, items, and (for a win) the challenge's reward of skill points are yours to keep.
+ * {@link World} runs the fight itself; this class is the director on top.
  */
 final class Run {
-    static final int STAGES = 3;
-    /** Seconds of survival before a stage's boss arrives. */
-    static final double STAGE_TIME = 300;
-    static final double[] ELITE_TIMES = {100, 200};
-    static final double[] SWARM_TIMES = {60, 150, 240};
-    static final double BOSS_WARNING = 10;
+    /** Seconds between elites, and between swarms. */
+    static final double ELITE_EVERY = 80, SWARM_EVERY = 115;
+    static final double BOSS_WARNING = 4;
     static final double RING_RADIUS = 600;
     static final int MAX_ENEMIES = 110;
-    static final int CRATES = 34;
+    static final int CRATES = 30;
+    /** How close a nest notices you (and starts sending guards). */
+    static final double NEST_RANGE = 760;
 
+    /** How a fight ended. */
+    enum Outcome { VICTORY, DEFEAT, RETREAT }
+
+    final Challenge challenge;
     final Random rng;
-    final long seed;
-    int stage;
-    /** Seconds into the current stage (the clock on the HUD), and into the whole run. */
-    double stageTime, runTime;
+    /** How many times it had been cleared before (each one makes it more dangerous). */
+    final int loops;
+    /** Seconds into the fight. */
+    double time;
+    /** Gold picked up during the fight (not counting the reward). */
     int gold;
-    /** Items found this run: yours to keep when it ends, however it ends. */
+    /** Items found this fight: yours to keep when it ends, however it ends. */
     final List<Item> loot = new ArrayList<>();
-    /** What the character was wearing when the run began (a loaded run keeps its own gear, whatever the Armory says now). */
-    final List<Item> gear = new ArrayList<>();
     final List<Pickup> pickups = new ArrayList<>();
 
-    int elitesDone, swarmsDone, elitesKilled, bossesKilled;
+    int nestsTotal, nestsLeft, elitesKilled, cachesOpened;
     boolean bossSpawned, bossDead;
+    double bossWarning;
     boolean ringActive;
     double ringX, ringY;
-    private double spawnTimer, crateTimer, retuneTimer, autosaveTimer = 30;
+    private double spawnTimer, crateTimer, retuneTimer, eliteTimer = ELITE_EVERY, swarmTimer = SWARM_EVERY;
     private double xpCarry;
 
     // level-up / chest choices
@@ -71,46 +72,73 @@ final class Run {
     boolean reviveAvailable, reviveUsed;
 
     // the end
-    boolean over, victory;
-    List<String> records = List.of();
-    List<Item> bonusLoot = List.of();
+    boolean over;
+    Outcome outcome;
+    int rewardGold, rewardSkillPoints;
+    boolean firstClear;
 
-    Run(long seed) {
-        this.seed = seed;
+    private Run(Challenge c, long seed, int loops) {
+        this.challenge = c;
         this.rng = new Random(seed);
+        this.loops = loops;
     }
 
-    // ------------------------------------------------------------------ starting, stages
+    // ------------------------------------------------------------------ starting
 
-    /** A brand-new run with whatever the profile is wearing. */
-    static Run start(World w, Profile profile) {
-        Run r = new Run(System.nanoTime());
-        r.gear.addAll(profile.worn());
-        w.level = Level.arena(0);
-        w.player = r.makePlayer(w.level, true);
-        r.enterStage(w, 0, true);
+    /** A fight on the world's freshly made battlefield ({@link World#level}), with whatever the hero wears and has mastered. */
+    static Run start(World w, Challenge c) {
+        Adventure a = w.adventure;
+        Run r = new Run(c, System.nanoTime(), a.clears(c));
+        w.player = r.makePlayer(w, w.level);
+        Player p = w.player;
+        w.camX = p.x;
+        w.camY = p.y;
+        w.kills = 0;
+        w.time = 0;
+        w.fade = 1;
+        r.spawnTimer = 2;
+        r.retune(w);
+        for (Util.Vec v : w.level.nestSpots) {
+            Enemy nest = new Enemy(Enemy.Type.NEST, v.x(), v.y(), r.hpMult(p, Enemy.Type.NEST), 1, w.rng);
+            nest.spawnIn = 0;
+            w.enemies.add(nest);
+            r.nestsTotal++;
+        }
+        r.nestsLeft = r.nestsTotal;
+        for (Util.Vec v : w.level.cacheSpots) r.pickups.add(new Pickup(Pickup.Kind.CACHE, v.x(), v.y(), 0));
+        r.priceCaches();
+        w.banner = c.title;
+        w.bannerTimer = 3;
+        w.notice = "DESTROY THE " + r.nestsTotal + " NESTS";
+        w.noticeHint = (r.loops > 0 ? "Loop " + (r.loops + 1) + ": the Blight is stronger than last time.   " : "")
+            + "Hold ENTER to swing your sword. The longer you take, the worse it gets.";
+        w.noticeTimer = 6;
+        r.pendingLevels = a.rank(Mastery.HEAD_START);
         return r;
     }
 
-    /** A fresh character for a run: just the sword, plus whatever the gear gives. */
-    Player makePlayer(Level level, boolean startPerks) {
+    /** A fresh fighter: just the sword, plus whatever the gear and the masteries give. */
+    private Player makePlayer(World w, Level level) {
         Player p = new Player(level.spawnX, level.spawnY);
-        java.util.Arrays.fill(p.spellLevel, 0);          // no Magic menu in a run: skills fire on their own
         p.rollUnlocked = false;
-        p.mpPerHit = 0;
         p.critChance = 0.05;
-        for (Item it : gear) {
+        for (Item it : w.profile.worn()) {
             for (Item.Stat s : it.stats.keySet()) applyStat(p, s, it.value(s));
             if (it.unique == null) continue;
             switch (it.unique) {
                 case REROLL -> rerolls += 2;
                 case REVIVE -> reviveAvailable = true;
                 case FOURTH_CARD -> cards = 4;
-                case WAVE_START -> { if (startPerks) Perk.CRESCENT_WAVE.take(p); }
-                case COMBO_START -> { if (startPerks) Perk.COMBO.take(p); }
-                case ROLL_START -> { if (startPerks) Perk.ROLL.take(p); }
+                case WAVE_START -> Perk.CRESCENT_WAVE.take(p);
+                case COMBO_START -> Perk.COMBO.take(p);
+                case ROLL_START -> { if (p.perk[Perk.ROLL.ordinal()] == 0) Perk.ROLL.take(p); }
             }
         }
+        Adventure a = w.adventure;
+        Mastery.applyAll(p, a.mastery);
+        if (a.rank(Mastery.TUMBLER) > 0 && p.perk[Perk.ROLL.ordinal()] == 0) Perk.ROLL.take(p);
+        if (a.rank(Mastery.SECOND_WIND) > 0) reviveAvailable = true;
+        rerolls += a.rank(Mastery.REROLLS);
         p.hp = p.maxHp;
         return p;
     }
@@ -132,42 +160,20 @@ final class Run {
         }
     }
 
-    /** Arrives in stage {@code s}: a clean arena, full health, the clock at zero. Saved, so a crash never costs a stage. */
-    void enterStage(World w, int s, boolean save) {
-        stage = s;
-        stageTime = 0;
-        elitesDone = swarmsDone = 0;
-        bossSpawned = bossDead = ringActive = false;
-        spawnTimer = 1.0;
-        crateTimer = 0;
-        pickups.clear();
-        if (w.level == null || w.level.arenaStage != s) w.level = Level.arena(s);
-        w.clearField();
-        Player p = w.player;
-        p.x = p.lastX = w.level.spawnX;
-        p.y = p.lastY = w.level.spawnY;
-        p.hp = p.maxHp;
-        w.camX = p.x;
-        w.camY = p.y;
-        w.banner = "STAGE " + (s + 1);
-        w.bannerTimer = 3;
-        w.notice = w.level.name;
-        w.noticeHint = (s == 0 ? "Hold ENTER to swing your sword.   " : "") + "Survive " + (int) (STAGE_TIME / 60) + " minutes. Then "
-            + w.level.bossName + " comes for you.";
-        w.noticeTimer = 5;
-        w.fade = 1;
-        retune(w);
-        if (save) save(w, file());
-    }
-
     // ------------------------------------------------------------------ difficulty
 
-    /** How far into the run the monsters think you are: 5 per stage, plus the minutes into this one. */
-    double threat() { return stage * 5 + Math.min(stageTime, STAGE_TIME) / 60; }
+    /** How dangerous it is right now: the challenge's own danger, each earlier clear, and a step for every minute you've taken. */
+    double threat() { return challenge.danger + loops * Challenge.LOOP_DANGER + time / 60; }
+
+    /** The danger clock's word for it, Risk of Rain style. */
+    String dangerLabel() {
+        double t = threat();
+        return t < 2 ? "EASY" : t < 4 ? "MEDIUM" : t < 6 ? "HARD" : t < 8 ? "VERY HARD" : t < 10 ? "INSANE" : "IMPOSSIBLE";
+    }
 
     double hpMult(Player p, Enemy.Type t) {
         double m = threat();
-        double base = t.small() ? 0.52 : 0.8;
+        double base = t == Enemy.Type.NEST ? 1 : t.small() ? 0.52 : 0.8;
         return base * (1 + 0.30 * m + 0.014 * m * m) * (1 + 0.03 * (p.level - 1));
     }
 
@@ -177,11 +183,10 @@ final class Run {
 
     /** How many monsters the director keeps around you. */
     int population(Player p) {
-        double m = Math.min(stageTime, STAGE_TIME) / 60;
-        return (int) Math.min(MAX_ENEMIES, 12 + (stage == 0 ? 5.2 : 6.5) * m + 6 * stage + 0.4 * p.level);
+        return (int) Math.min(MAX_ENEMIES, 12 + 5.0 * threat() + 0.4 * p.level);
     }
 
-    /** Keeps the level's multipliers (used by the final boss's summons) in step with the clock. */
+    /** Keeps the level's multipliers (used by summons) in step with the clock. */
     private void retune(World w) {
         Player p = w.player;
         w.level.smallEnemyHpMult = hpMult(p, Enemy.Type.GRUNT) * 0.6;
@@ -189,31 +194,16 @@ final class Run {
         w.level.smallEnemyDamageMult = w.level.enemyDamageMult = dmgMult(p);
     }
 
-    /** What the director sends at you, and how often, by stage and by how far into it you are. */
+    /** What the director sends at you: mostly the challenge's favourite, more variety the longer it goes. */
     private Enemy.Type pickType() {
-        double m = stageTime / 60;
+        double m = threat();
         double[] wts = new double[Enemy.Type.values().length];
         wts[Enemy.Type.GRUNT.ordinal()] = 1.0;
-        switch (stage) {
-            case 0 -> {
-                wts[Enemy.Type.RUNNER.ordinal()] = m >= 0.5 ? 0.6 : 0;
-                wts[Enemy.Type.SHOOTER.ordinal()] = m >= 1.5 ? 0.3 : 0;
-                wts[Enemy.Type.BRUTE.ordinal()] = m >= 2.5 ? 0.1 + 0.03 * m : 0;
-            }
-            case 1 -> {
-                wts[Enemy.Type.RUNNER.ordinal()] = 0.7;
-                wts[Enemy.Type.SHOOTER.ordinal()] = m >= 0.5 ? 0.35 : 0;
-                wts[Enemy.Type.SHADE.ordinal()] = m >= 1 ? 0.3 : 0;
-                wts[Enemy.Type.BRUTE.ordinal()] = m >= 1.5 ? 0.15 : 0;
-            }
-            default -> {
-                wts[Enemy.Type.GRUNT.ordinal()] = 0.9;
-                wts[Enemy.Type.RUNNER.ordinal()] = 0.8;
-                wts[Enemy.Type.SHOOTER.ordinal()] = 0.4;
-                wts[Enemy.Type.SHADE.ordinal()] = 0.35;
-                wts[Enemy.Type.BRUTE.ordinal()] = m >= 1 ? 0.22 : 0.08;
-            }
-        }
+        wts[Enemy.Type.RUNNER.ordinal()] = m >= 0.5 ? 0.6 : 0;
+        wts[Enemy.Type.SHOOTER.ordinal()] = m >= 1.5 ? 0.3 : 0;
+        wts[Enemy.Type.BRUTE.ordinal()] = m >= 2.5 ? 0.1 + 0.02 * m : 0;
+        wts[Enemy.Type.SHADE.ordinal()] = m >= 5 ? 0.2 : 0;
+        wts[challenge.favoured.ordinal()] += 1.2;
         double total = 0;
         for (double v : wts) total += v;
         double x = rng.nextDouble() * total;
@@ -228,29 +218,32 @@ final class Run {
 
     void update(World w, double dt) {
         Player p = w.player;
-        stageTime += dt;
-        runTime += dt;
+        time += dt;
         if (p.regen > 0 && p.hp > 0) p.hp = Math.min(p.maxHp, p.hp + p.regen * dt);
         Arsenal.update(w, p, dt);
 
         retuneTimer -= dt;
         if (retuneTimer <= 0) { retuneTimer = 1; retune(w); }
-        autosaveTimer -= dt;
-        if (autosaveTimer <= 0) { autosaveTimer = 30; save(w, file()); }
 
-        boolean calm = bossSpawned || bossDead;
-        if (!calm) {
+        if (!bossSpawned && !bossDead) {
             direct(w, dt);
-            if (elitesDone < ELITE_TIMES.length && stageTime >= ELITE_TIMES[elitesDone]) spawnElite(w);
-            if (swarmsDone < SWARM_TIMES.length && stageTime >= SWARM_TIMES[swarmsDone]) swarm(w);
-            if (stageTime >= STAGE_TIME) spawnBoss(w);
+            eliteTimer -= dt;
+            if (eliteTimer <= 0) { eliteTimer = ELITE_EVERY; spawnElite(w); }
+            swarmTimer -= dt;
+            if (swarmTimer <= 0) { swarmTimer = SWARM_EVERY; swarm(w); }
+            updateNests(w, dt);
+        }
+        if (bossWarning > 0) {
+            bossWarning -= dt;
+            w.shake = Math.max(w.shake, 3);
+            if (bossWarning <= 0) spawnBoss(w);
         }
         relocateStragglers(w);
         updateCrates(w, dt);
         updatePickups(w, dt);
     }
 
-    /** Keeps the arena topped up: a few more monsters every third of a second while there are fewer than the target. */
+    /** Keeps the battlefield topped up: a few more monsters every third of a second while there are fewer than the target. */
     private void direct(World w, double dt) {
         spawnTimer -= dt;
         if (spawnTimer > 0) return;
@@ -260,21 +253,20 @@ final class Run {
         for (Enemy e : w.enemies) if (e.type == Enemy.Type.SHOOTER) shooters++;
         for (int i = 0; i < Math.min(3, want); i++) {
             Enemy.Type t = pickType();
-            if (t == Enemy.Type.SHOOTER && shooters >= 8 + 2 * stage) t = Enemy.Type.GRUNT;
+            if (t == Enemy.Type.SHOOTER && shooters >= 8) t = Enemy.Type.GRUNT;
             if (t == Enemy.Type.SHOOTER) shooters++;
-            Util.Vec at = spawnPoint(w, 760, 960);
+            Util.Vec at = spawnPoint(w, 700, 950);
             spawn(w, t, at.x(), at.y(), 1, 1);
         }
     }
 
-    /** A spot {@code min}..{@code max} away from the player (just off-screen), inside the arena. */
+    /** A spot {@code min}..{@code max} away from the player (just off-screen), on walkable ground. */
     Util.Vec spawnPoint(World w, double min, double max) {
         Player p = w.player;
-        double margin = 70;
-        for (int tries = 0; tries < 24; tries++) {
+        for (int tries = 0; tries < 30; tries++) {
             double a = rng.nextDouble() * Math.PI * 2, d = min + rng.nextDouble() * (max - min);
             double x = p.x + Math.cos(a) * d, y = p.y + Math.sin(a) * d;
-            if (x > margin && y > margin && x < w.level.width - margin && y < w.level.height - margin) return new Util.Vec(x, y);
+            if (w.level.contains(x, y) && w.level.contains(x + 30, y) && w.level.contains(x - 30, y)) return new Util.Vec(x, y);
         }
         double a = rng.nextDouble() * Math.PI * 2;
         return w.level.clamp(p.x + Math.cos(a) * min, p.y + Math.sin(a) * min, 30);
@@ -290,25 +282,54 @@ final class Run {
     /** Monsters left far behind are brought back round in front of you, so the pressure never just trails off. */
     private void relocateStragglers(World w) {
         for (Enemy e : w.enemies) {
-            if (e.type == Enemy.Type.BOSS || e.elite || e.summoned) continue;
+            if (e.type == Enemy.Type.BOSS || e.rooted() || e.elite || e.summoned) continue;
             if (Util.dist(e.x, e.y, w.player.x, w.player.y) < 1500) continue;
-            Util.Vec at = spawnPoint(w, 760, 900);
+            Util.Vec at = spawnPoint(w, 700, 900);
             e.x = e.lastX = at.x();
             e.y = e.lastY = at.y();
             e.kx = e.ky = 0;
         }
     }
 
+    /** Nests guard themselves: when you come near, a burst of guards springs up, and more keep coming while you're close. */
+    private void updateNests(World w, double dt) {
+        Player p = w.player;
+        for (Enemy nest : new ArrayList<>(w.enemies)) {                  // (its guards join the list as we go)
+            if (!nest.rooted() || nest.hp <= 0) continue;
+            double d = Util.dist(nest.x, nest.y, p.x, p.y);
+            if (d > NEST_RANGE) continue;
+            nest.summonCd -= dt;
+            if (!nest.awake) {
+                nest.awake = true;
+                nest.summonCd = 0;
+                w.notice = "A NEST!";
+                w.noticeHint = "It spits out guards while you're near. Tear it down.";
+                w.noticeTimer = 3;
+                w.soundAt(Snd.BOSS_INTRO, nest.x, nest.y, 0, 0.6, 1.2);
+            }
+            if (nest.summonCd > 0) continue;
+            int guards = nest.waves++ == 0 ? 5 : 2 + (threat() > 4 ? 1 : 0);
+            nest.summonCd = 4.5;
+            for (int i = 0; i < guards; i++) {
+                double a = rng.nextDouble() * Math.PI * 2;
+                Util.Vec at = w.level.clamp(nest.x + Math.cos(a) * 90, nest.y + Math.sin(a) * 90, 20);
+                Enemy.Type t = i == 0 && nest.waves > 3 && threat() > 3 ? Enemy.Type.BRUTE : challenge.favoured;
+                Enemy e = spawn(w, t, at.x(), at.y(), 0.9, 1);
+                e.spawnIn = 0.5;
+                w.effects.add(Effect.ring(at.x(), at.y(), 40, 10, 0.4, new Color(220, 90, 255), false));
+            }
+            w.soundAt(Snd.BOSS_SUMMON_LAB, nest.x, nest.y, 0, 0.7, 0.8);
+        }
+    }
+
     /** A ring of monsters closing in from every side at once. */
     private void swarm(World w) {
-        swarmsDone++;
-        int n = 16 + 4 * stage + swarmsDone * 2;
-        Enemy.Type t = stage == 0 && swarmsDone == 1 ? Enemy.Type.GRUNT : Enemy.Type.RUNNER;
+        int n = 14 + (int) (2 * threat());
         Player p = w.player;
         for (int i = 0; i < n; i++) {
             double a = i * Math.PI * 2 / n;
             Util.Vec at = w.level.clamp(p.x + Math.cos(a) * 560, p.y + Math.sin(a) * 560, 20);
-            spawn(w, t, at.x(), at.y(), 0.8, 1);
+            spawn(w, challenge.favoured == Enemy.Type.GRUNT ? Enemy.Type.RUNNER : challenge.favoured, at.x(), at.y(), 0.8, 1);
         }
         w.banner = "SWARM!";
         w.bannerTimer = 1.6;
@@ -316,34 +337,21 @@ final class Run {
     }
 
     private void spawnElite(World w) {
-        elitesDone++;
-        Enemy.Type t = switch (stage) {
-            case 0 -> Enemy.Type.BRUTE;
-            case 1 -> elitesDone == 1 ? Enemy.Type.BRUTE : Enemy.Type.SHADE;
-            default -> elitesDone == 1 ? Enemy.Type.SHOOTER : Enemy.Type.BRUTE;
-        };
+        Enemy.Type t = threat() > 5 && rng.nextBoolean() ? Enemy.Type.SHOOTER : Enemy.Type.BRUTE;
         Util.Vec at = spawnPoint(w, 520, 640);
         Enemy e = spawn(w, t, at.x(), at.y(), t.small() ? 22 : 12, 1.5);
         e.elite = true;
         e.spawnIn = 0.9;
         w.banner = "ELITE!";
         w.bannerTimer = 2;
-        w.notice = "An elite " + eliteName(t) + " has appeared";
+        w.notice = "An elite " + (t == Enemy.Type.BRUTE ? "stump golem" : "snap-bloom") + " has appeared";
         w.noticeHint = "It drops a treasure chest.";
         w.noticeTimer = 3.5;
         w.sound(Snd.BOSS_INTRO);
         w.effects.add(Effect.ring(at.x(), at.y(), 10, 120, 0.6, new Color(255, 210, 80), true));
     }
 
-    private String eliteName(Enemy.Type t) {
-        return switch (stage) {
-            case 0 -> t == Enemy.Type.BRUTE ? "stump golem" : "beast";
-            case 1 -> t == Enemy.Type.BRUTE ? "dumpster" : "shade";
-            default -> t == Enemy.Type.SHOOTER ? "acid flask" : "mutant";
-        };
-    }
-
-    /** The clock has run out: every monster still standing vanishes (leaving its gem), and the boss arrives in a ring. */
+    /** The last nest is down: everything ordinary drops its gem and vanishes, and the guardian arrives in a ring. */
     private void spawnBoss(World w) {
         bossSpawned = true;
         Player p = w.player;
@@ -354,15 +362,17 @@ final class Run {
         w.enemies.clear();
         w.projectiles.clear();
         w.lockTarget = null;
-        double m = RING_RADIUS + 90;
-        ringX = Util.clamp(p.x, m, w.level.width - m);
-        ringY = Util.clamp(p.y, m, w.level.height - m);
+        ringX = p.x;
+        ringY = p.y;
         ringActive = true;
-        double a = rng.nextDouble() * Math.PI * 2;
-        double bx = ringX + Math.cos(a) * 360, by = ringY + Math.sin(a) * 360;
-        double[] hp = {0.95, 2.0, 1.7};
-        double[] dmg = {1.0, 1.3, 1.6};
-        Enemy boss = new Enemy(Enemy.Type.BOSS, bx, by, hp[stage] * (1 + 0.05 * (p.level - 1)), dmg[stage], w.rng);
+        Util.Vec at = null;
+        for (int tries = 0; tries < 24 && at == null; tries++) {
+            double a = rng.nextDouble() * Math.PI * 2;
+            double bx = ringX + Math.cos(a) * 340, by = ringY + Math.sin(a) * 340;
+            if (w.level.contains(bx, by)) at = new Util.Vec(bx, by);
+        }
+        if (at == null) at = w.level.clamp(ringX + 200, ringY, 50);
+        Enemy boss = new Enemy(Enemy.Type.BOSS, at.x(), at.y(), (0.85 + 0.35 * loops) * (1 + 0.05 * (p.level - 1)), 0.9 + 0.3 * loops, w.rng);
         w.enemies.add(boss);
         w.banner = w.level.bossName;
         w.bannerTimer = 3;
@@ -375,18 +385,11 @@ final class Run {
     }
 
     /**
-     * The nearest spot to (x, y) where something {@code r} across can stand and be walked up to: out of any grass bed
-     * and clear of trees and rocks; crates in the way are simply swept aside.
+     * The nearest spot to (x, y) where something {@code r} across can stand and be walked up to: clear of trees and
+     * rocks, on walkable ground; crates in the way are simply swept aside.
      */
     Util.Vec clearSpot(World w, double x, double y, double r) {
         for (int pass = 0; pass < 4; pass++) {
-            for (java.awt.geom.Rectangle2D.Double g : w.level.grassPatches) {
-                double minX = g.x - r, maxX = g.getMaxX() + r, minY = g.y - r, maxY = g.getMaxY() + r;
-                if (x <= minX || x >= maxX || y <= minY || y >= maxY) continue;
-                double left = x - minX, right = maxX - x, top = y - minY, bottom = maxY - y;
-                double m = Math.min(Math.min(left, right), Math.min(top, bottom));
-                if (m == left) x = minX; else if (m == right) x = maxX; else if (m == top) y = minY; else y = maxY;
-            }
             for (Level.Landmark l : w.level.landmarks) {
                 if (l.radius() <= 0) continue;
                 double d = Util.dist(x, y, l.x(), l.y() - 12), min = l.radius() + r;
@@ -423,7 +426,7 @@ final class Run {
         return new Util.Vec(ringX + dx / d * max, ringY + dy / d * max);
     }
 
-    /** Keeps the arena stocked with crates (they break, the director quietly replaces them out of sight). */
+    /** Keeps the battlefield stocked with crates (they break, the director quietly replaces them out of sight). */
     private void updateCrates(World w, double dt) {
         crateTimer -= dt;
         if (crateTimer > 0) return;
@@ -443,15 +446,22 @@ final class Run {
     void onKill(World w, Enemy e) {
         if (e.elite) elitesKilled++;
         dropFor(w, e);
+        if (e.type == Enemy.Type.NEST) nestDown(w, e);
         if (e.type == Enemy.Type.BOSS) bossDown(w, e);
     }
 
-    /** Its gem, maybe a coin or a heart, and a chest for an elite. */
+    /** Its gem, maybe a coin or a heart, and a chest for an elite. A nest bursts into a shower of them. */
     private void dropFor(World w, Enemy e) {
         if (e.summoned) return;
-        int xp = (int) Math.round(e.type.xp * (1 + 0.2 * stage) * (e.elite ? 6 : 1) * (e.type == Enemy.Type.BOSS ? 1 + stage : 1));
+        if (e.type == Enemy.Type.NEST) {
+            for (int i = 0; i < 6; i++) drop(w, new Pickup(Pickup.Kind.GEM, e.x, e.y, 14 + (int) (2 * threat())));
+            for (int i = 0; i < 4; i++) drop(w, new Pickup(Pickup.Kind.COIN, e.x, e.y, 3 + rng.nextInt(4)));
+            drop(w, new Pickup(Pickup.Kind.HEART, e.x, e.y, 0));
+            return;
+        }
+        int xp = (int) Math.round(e.type.xp * (1 + 0.1 * threat()) * (e.elite ? 6 : 1) * (e.type == Enemy.Type.BOSS ? 2 : 1));
         drop(w, new Pickup(Pickup.Kind.GEM, e.x, e.y, xp));
-        if (rng.nextDouble() < 0.035 || e.elite) drop(w, new Pickup(Pickup.Kind.COIN, e.x, e.y, (1 + rng.nextInt(3)) * (1 + stage) * (e.elite ? 8 : 1)));
+        if (rng.nextDouble() < 0.04 || e.elite) drop(w, new Pickup(Pickup.Kind.COIN, e.x, e.y, (1 + rng.nextInt(3)) * (e.elite ? 10 : 1)));
         if (rng.nextDouble() < 0.004) drop(w, new Pickup(Pickup.Kind.HEART, e.x, e.y, 0));
         if (e.elite) drop(w, new Pickup(Pickup.Kind.ELITE_CHEST, e.x, e.y, 0));
     }
@@ -467,7 +477,7 @@ final class Run {
             }
             if (gems > 320 && far != null) { far.value += pk.value; return; }      // too many lying about: pool it into a distant one
         }
-        if (pk.kind != Pickup.Kind.PORTAL && pk.kind != Pickup.Kind.BOSS_CHEST) {  // things pop out of what dropped them
+        if (pk.kind != Pickup.Kind.PORTAL && pk.kind != Pickup.Kind.BOSS_CHEST && pk.kind != Pickup.Kind.CACHE) {   // things pop out of what dropped them
             double a = rng.nextDouble() * Math.PI * 2, sp = pk.kind.magnetic() ? 60 + rng.nextDouble() * 90 : 120;
             pk.vx = Math.cos(a) * sp;
             pk.vy = Math.sin(a) * sp;
@@ -480,34 +490,100 @@ final class Run {
         double x = rng.nextDouble();
         Pickup.Kind k = x < 0.38 ? Pickup.Kind.COIN : x < 0.58 ? Pickup.Kind.HEART : x < 0.70 ? Pickup.Kind.MAGNET
             : x < 0.80 ? Pickup.Kind.BOMB : Pickup.Kind.GEM;
-        int value = k == Pickup.Kind.COIN ? (3 + rng.nextInt(6)) * (1 + stage) : k == Pickup.Kind.GEM ? 12 + 6 * stage : 0;
+        int value = k == Pickup.Kind.COIN ? 3 + rng.nextInt(6) : k == Pickup.Kind.GEM ? 12 + (int) (3 * threat()) : 0;
         drop(w, new Pickup(k, b.x, b.y - 6, value));
     }
 
-    /** The boss is down: the ring falls, every gem flies to you, its chest drops and a portal opens. */
-    private void bossDown(World w, Enemy boss) {
-        bossDead = true;
-        ringActive = false;
-        bossesKilled++;
-        for (Pickup pk : pickups) if (pk.kind == Pickup.Kind.GEM || pk.kind == Pickup.Kind.COIN) pk.attracted = true;
-        Util.Vec chest = clearSpot(w, boss.x, boss.y, 40);
-        drop(w, new Pickup(Pickup.Kind.BOSS_CHEST, chest.x(), chest.y(), 0));
-        Util.Vec portal = w.level.clamp(ringX, ringY - 120, 60);
-        if (Util.dist(portal.x(), portal.y(), chest.x(), chest.y()) < 140) portal = w.level.clamp(ringX + 200, ringY - 160, 60);
-        portal = clearSpot(w, portal.x(), portal.y(), 60);
-        drop(w, new Pickup(Pickup.Kind.PORTAL, portal.x(), portal.y(), 0));
-        boolean last = stage + 1 >= STAGES;
-        w.banner = last ? "VICTORY!" : "STAGE CLEARED";
-        w.bannerTimer = 3;
-        w.notice = "Open the chest, then step into the portal";
-        w.noticeHint = last ? "The portal leads home." : "It leads on to stage " + (stage + 2) + ".";
-        w.noticeTimer = 6;
-        w.sound(Snd.GUIDE_APPEAR, 2.4);
+    /** A nest is down. With the last one gone, the guardian comes (or the way home opens). */
+    private void nestDown(World w, Enemy nest) {
+        nestsLeft--;
+        w.shake = Math.max(w.shake, 8);
+        w.effects.add(Effect.ring(nest.x, nest.y, 20, 220, 0.6, new Color(230, 110, 255), true));
+        if (nestsLeft > 0) {
+            w.banner = "NEST DESTROYED";
+            w.bannerTimer = 2;
+            w.notice = (nestsTotal - nestsLeft) + " / " + nestsTotal + " NESTS";
+            w.noticeHint = nestsLeft == 1 ? "One left." : nestsLeft + " left. Follow the arrows.";
+            w.noticeTimer = 3.5;
+            w.sound(Snd.ROOM_CLEAR);
+            return;
+        }
+        w.sound(Snd.BOSS_UNSEAL);
+        if (challenge.boss) {
+            bossWarning = BOSS_WARNING;
+            w.banner = "THE GROUND SHAKES";
+            w.bannerTimer = 3;
+            w.notice = "Every nest is down... and something is coming";
+            w.noticeHint = "Get ready.";
+            w.noticeTimer = BOSS_WARNING;
+        } else {
+            openWayHome(w, w.player.x, w.player.y - 60, false);
+        }
     }
 
-    // ------------------------------------------------------------------ pickups
+    /** The guardian is down: the ring falls, every gem flies to you, its chest drops and the way home opens. */
+    private void bossDown(World w, Enemy boss) {
+        ringActive = false;
+        openWayHome(w, boss.x, boss.y, true);
+    }
+
+    /** The end of the fight: gems and gold fly to you, a chest drops, and a portal home opens beside it. */
+    private void openWayHome(World w, double x, double y, boolean boss) {
+        bossDead = true;
+        for (Pickup pk : pickups) if (pk.kind == Pickup.Kind.GEM || pk.kind == Pickup.Kind.COIN) pk.attracted = true;
+        for (Enemy e : w.enemies) if (!e.rooted()) e.hp = 0;
+        Util.Vec chest = clearSpot(w, x, y, 40);
+        drop(w, new Pickup(Pickup.Kind.BOSS_CHEST, chest.x(), chest.y(), 0));
+        Util.Vec portal = clearSpot(w, chest.x() + 30, chest.y() - 170, 60);
+        if (Util.dist(portal.x(), portal.y(), chest.x(), chest.y()) < 140) portal = clearSpot(w, chest.x() + 200, chest.y(), 60);
+        drop(w, new Pickup(Pickup.Kind.PORTAL, portal.x(), portal.y(), 0));
+        w.banner = boss ? "VICTORY!" : "CLEARED!";
+        w.bannerTimer = 3;
+        w.notice = "Open the chest, then step into the light";
+        w.noticeHint = "It leads back to the forest.";
+        w.noticeTimer = 6;
+        w.sound(Snd.GUIDE_APPEAR, boss ? 2.4 : 0.6);
+    }
+
+    // ------------------------------------------------------------------ pickups and caches
+
+    /** Sets each unopened cache's price: dearer the more you've opened and the longer the fight has run. */
+    private void priceCaches() {
+        int price = (int) Math.round(25 + 15 * cachesOpened + 4 * threat());
+        for (Pickup pk : pickups) if (pk.kind == Pickup.Kind.CACHE) pk.value = price;
+    }
+
+    /** The cache within reach, if any. */
+    Pickup cacheNearby(World w) {
+        for (Pickup pk : pickups) {
+            if (pk.kind == Pickup.Kind.CACHE && Util.dist(pk.x, pk.y, w.player.x, w.player.y) < 80) return pk;
+        }
+        return null;
+    }
+
+    /** E in a fight: open the cache you're standing at, if you can afford it. */
+    void interact(World w) {
+        Pickup cache = cacheNearby(w);
+        if (cache == null) return;
+        if (gold < cache.value) {
+            w.effects.add(Effect.text(cache.x, cache.y - 60, "Needs " + cache.value + " gold", new Color(230, 120, 120), false));
+            w.sound(Snd.MENU_DENY);
+            return;
+        }
+        gold -= cache.value;
+        pickups.remove(cache);
+        cachesOpened++;
+        w.sound(Snd.CHEST_OPEN);
+        chestBurst(w, cache.x, cache.y, new Color(255, 214, 90));
+        if (rng.nextDouble() < 0.35) findItem(w, Item.roll(rng, Item.rarity(rng, new double[]{40, 40, 17, 3, 0}), tier()));
+        pendingChests++;
+    }
+
+    /** How strong items found here are. */
+    private int tier() { return (int) Math.min(3, (challenge.danger + loops * Challenge.LOOP_DANGER) / 2); }
 
     private void updatePickups(World w, double dt) {
+        priceCaches();
         Player p = w.player;
         boolean chestLeft = false;
         for (Pickup pk : pickups) if (pk.kind == Pickup.Kind.BOSS_CHEST) chestLeft = true;
@@ -532,6 +608,8 @@ final class Run {
                 if (d < p.radius + 12) taken.add(pk);
             } else if (pk.kind == Pickup.Kind.PORTAL) {
                 if (!chestLeft && d < pk.radius()) taken.add(pk);
+            } else if (pk.kind == Pickup.Kind.CACHE) {
+                // opened with E (see interact)
             } else if (d < p.radius + pk.radius() && pk.age > 0.3) {
                 taken.add(pk);
             }
@@ -539,7 +617,7 @@ final class Run {
         for (Pickup pk : taken) {
             if (!pickups.remove(pk)) continue;
             collect(w, pk);
-            if (w.run != this || w.state != World.State.PLAYING && pk.kind == Pickup.Kind.PORTAL) return;   // the stage (or run) just ended
+            if (w.run != this || w.state != World.State.PLAYING && pk.kind == Pickup.Kind.PORTAL) return;   // the fight just ended
         }
     }
 
@@ -559,7 +637,7 @@ final class Run {
             case HEART -> {
                 p.heal(w, p.maxHp * 0.3);
                 w.sound(Snd.POWERUP);
-                w.effects.add(Effect.ring(p.x, p.y, 10, 60, 0.4, Ability.HEAL.color, true));
+                w.effects.add(Effect.ring(p.x, p.y, 10, 60, 0.4, Perk.HEALING.color, true));
             }
             case MAGNET -> {
                 for (Pickup o : pickups) if (o.kind.magnetic()) o.attracted = true;
@@ -567,15 +645,16 @@ final class Run {
                 w.effects.add(Effect.ring(p.x, p.y, 20, 900, 0.6, new Color(120, 170, 255), false));
                 w.effects.add(Effect.text(p.x, p.y - 60, "MAGNET!", new Color(140, 190, 255), true));
             }
-            case BOMB -> bomb(w, pk);
+            case BOMB -> bomb(w);
             case ELITE_CHEST -> openEliteChest(w, pk);
             case BOSS_CHEST -> openBossChest(w, pk);
-            case PORTAL -> enterPortal(w);
+            case PORTAL -> { w.sound(Snd.TRAVEL); finish(w, Outcome.VICTORY); }
+            case CACHE -> { }
         }
     }
 
-    /** Wipes out every ordinary monster on screen (elites and bosses just take a heavy hit). */
-    private void bomb(World w, Pickup pk) {
+    /** Wipes out every ordinary monster on screen (nests, elites and bosses just take a heavy hit). */
+    private void bomb(World w) {
         Player p = w.player;
         w.sound(Snd.FIRE_EXPLODE);
         w.shake = Math.max(w.shake, 12);
@@ -583,38 +662,36 @@ final class Run {
         w.effects.add(Effect.ring(p.x, p.y, 30, 760, 0.5, new Color(255, 170, 70), true));
         for (Enemy e : w.enemies) {
             if (!e.targetable() || Util.dist(p.x, p.y, e.x, e.y) > 760) continue;
-            double big = e.type == Enemy.Type.BOSS || e.elite ? e.maxHp * 0.08 : e.hp + 1;
+            double big = e.type == Enemy.Type.BOSS || e.elite || e.rooted() ? e.maxHp * 0.08 : e.hp + 1;
             e.hurt(w, big, 0, 0, 0.3, new Color(255, 170, 70), true, false);
         }
     }
 
-    private static final double[][] ELITE_RARITY = {{60, 30, 10, 0, 0}, {35, 40, 20, 5, 0}, {15, 40, 33, 10, 2}};
-    private static final double[][] BOSS_RARITY = {{20, 45, 28, 7, 0}, {0, 30, 45, 22, 3}, {0, 10, 40, 40, 10}};
-
     private void openEliteChest(World w, Pickup pk) {
-        int g = 20 + 15 * stage;
+        int g = 20 + (int) (5 * threat());
         gold += g;
         w.sound(Snd.CHEST_OPEN);
         chestBurst(w, pk.x, pk.y, new Color(255, 214, 90));
         w.effects.add(Effect.text(pk.x, pk.y - 50, "+" + g + " GOLD", new Color(255, 214, 80), true));
-        if (rng.nextDouble() < 0.4) findItem(w, Item.roll(rng, Item.rarity(rng, ELITE_RARITY[stage]), stage));
+        if (rng.nextDouble() < 0.4) findItem(w, Item.roll(rng, Item.rarity(rng, new double[]{45, 35, 16, 4, 0}), tier()));
         pendingChests++;
     }
 
     private void openBossChest(World w, Pickup pk) {
-        int g = 60 * (stage + 1);
+        int g = 40 + (int) (10 * threat());
         gold += g;
         w.sound(Snd.CHEST_OPEN);
         chestBurst(w, pk.x, pk.y, new Color(255, 150, 60));
         w.effects.add(Effect.text(pk.x, pk.y - 50, "+" + g + " GOLD", new Color(255, 214, 80), true));
-        findItem(w, Item.roll(rng, Item.rarity(rng, BOSS_RARITY[stage]), stage));
+        double[] odds = challenge.boss ? new double[]{5, 35, 40, 17, 3 + loops} : new double[]{30, 45, 20, 5, 0};
+        findItem(w, Item.roll(rng, Item.rarity(rng, odds), tier()));
         pendingChests++;
     }
 
     private void findItem(World w, Item it) {
         loot.add(it);
         w.notice = "FOUND: " + it.name;
-        w.noticeHint = it.rarity.label + " " + it.slot.label.toLowerCase() + "  -  yours to keep, equip it in the Armory";
+        w.noticeHint = it.rarity.label + " " + it.slot.label.toLowerCase() + "  -  yours to keep";
         w.noticeTimer = 5;
         w.sound(Snd.GAME_CLEARED, 0.3);
     }
@@ -626,12 +703,6 @@ final class Run {
             w.effects.add(Effect.particle(x, y - 20, Math.cos(a) * 170, Math.sin(a) * 170 - 60, 0.8, "fx.star", -1, 0.03, 30, 3));
         }
         w.shake = Math.max(w.shake, 4);
-    }
-
-    private void enterPortal(World w) {
-        w.sound(Snd.TRAVEL);
-        if (stage + 1 >= STAGES) finish(w, true);
-        else enterStage(w, stage + 1, true);
     }
 
     // ------------------------------------------------------------------ XP and level-ups
@@ -681,8 +752,8 @@ final class Run {
     }
 
     /**
-     * 1, 2, 3 (and 4, with the Ring of Fortune) take that card; R rerolls them (a few times a run). ENTER is the attack,
-     * so it does nothing here. The cards can't be taken for the first {@value #CHOICE_ARM_TIME} seconds.
+     * 1, 2, 3 (and 4, with the Ring of Fortune) take that card; R rerolls them. ENTER is the attack, so it does nothing
+     * here. The cards can't be taken for the first {@value #CHOICE_ARM_TIME} seconds.
      */
     void updateChoices(World w, Input in, double dt) {
         choiceArm = Math.max(0, choiceArm - dt);
@@ -729,39 +800,37 @@ final class Run {
     // ------------------------------------------------------------------ the end
 
     /**
-     * The run is over, won or lost. Everything found is added to the profile (plus a bonus item for a win, or a
-     * consolation one for a long run that found nothing), records are updated, and the saved run is deleted.
+     * The fight is over. Whatever happened, the gold picked up and the items found are yours; a victory also pays the
+     * challenge's reward (gold and skill points, more for the first clear) and counts as a clear.
      */
-    void finish(World w, boolean won) {
+    void finish(World w, Outcome how) {
         if (over) return;
         over = true;
-        victory = won;
+        outcome = how;
+        Adventure a = w.adventure;
         Profile prof = w.profile;
-        List<Item> bonus = new ArrayList<>();
-        if (won) bonus.add(Item.roll(rng, Item.rarity(rng, new double[]{0, 0, 20, 55, 25}), 3));
-        else if (loot.isEmpty() && runTime > 150) bonus.add(Item.roll(rng, Item.rarity(rng, new double[]{50, 40, 10, 0, 0}), stage));
-        bonusLoot = bonus;
-        List<Item> all = new ArrayList<>(loot);
-        all.addAll(bonus);
-        List<String> rec = new ArrayList<>();
-        int reached = stage + (won ? 1 : 0);
-        if (reached > prof.bestStage) { prof.bestStage = reached; rec.add("Furthest stage"); }
-        if (w.kills > prof.bestKills) { prof.bestKills = w.kills; rec.add("Most kills"); }
-        if (w.player.level > prof.bestLevel) { prof.bestLevel = w.player.level; rec.add("Highest level"); }
-        if (runTime > prof.bestTime) { prof.bestTime = runTime; rec.add("Longest run"); }
-        records = rec;
+        if (how == Outcome.VICTORY) {
+            firstClear = a.clears(challenge) == 0;
+            rewardGold = firstClear ? challenge.gold : challenge.repeatGold + 20 * loops;
+            rewardSkillPoints = (firstClear ? challenge.skillPoints : challenge.repeatSkillPoints) + (w.player.level >= 12 ? 1 : 0);
+            a.clears.merge(challenge.id, 1, Integer::sum);
+            a.skillPoints += rewardSkillPoints;
+            a.wins++;
+            a.restock();
+        }
+        prof.gold += gold + rewardGold;
+        prof.add(loot);
         prof.runs++;
-        if (won) prof.victories++;
-        prof.gold += gold;
-        prof.add(all);
-        prof.save(Profile.file());
-        delete(file());
-        w.state = World.State.RUN_END;
+        if (how == Outcome.VICTORY) prof.victories++;
+        prof.bestKills = Math.max(prof.bestKills, w.kills);
+        prof.bestLevel = Math.max(prof.bestLevel, w.player.level);
+        w.saveGame();
+        w.state = World.State.RESULTS;
         w.overTimer = World.OVER_GUARD;
-        w.sound(won ? Snd.GAME_CLEARED : Snd.GAME_OVER);
+        w.sound(how == Outcome.VICTORY ? Snd.GAME_CLEARED : Snd.GAME_OVER);
     }
 
-    /** Legendary armour: the first death of the run isn't the end. */
+    /** Legendary armour or Second Wind: the first death of the fight isn't the end. */
     boolean tryRevive(World w) {
         if (!reviveAvailable || reviveUsed) return false;
         reviveUsed = true;
@@ -783,132 +852,12 @@ final class Run {
         return true;
     }
 
-    // ------------------------------------------------------------------ saving
-
-    static Path file() { return Profile.home().resolve("run.properties"); }
-
-    static boolean saved() { return Files.exists(file()); }
+    // ------------------------------------------------------------------ helpers
 
     static void delete(Path path) {
         try {
             Files.deleteIfExists(path);
         } catch (IOException ignored) { }
-    }
-
-    /** Writes the run as it stands. Enemies aren't saved: a loaded stage refills with fresh ones at the same clock time. */
-    void save(World w, Path path) {
-        if (over) return;
-        Properties p = new Properties();
-        Player pl = w.player;
-        p.setProperty("version", "1");
-        p.setProperty("seed", String.valueOf(seed));
-        p.setProperty("stage", String.valueOf(stage));
-        p.setProperty("stageTime", String.valueOf(stageTime));
-        p.setProperty("runTime", String.valueOf(runTime));
-        p.setProperty("gold", String.valueOf(gold));
-        p.setProperty("kills", String.valueOf(w.kills));
-        p.setProperty("level", String.valueOf(pl.level));
-        p.setProperty("xp", String.valueOf(pl.xp));
-        p.setProperty("hp", String.valueOf(pl.hp));
-        p.setProperty("rerolls", String.valueOf(rerolls));
-        p.setProperty("reviveUsed", reviveUsed ? "1" : "0");
-        p.setProperty("elitesDone", String.valueOf(elitesDone));
-        p.setProperty("swarmsDone", String.valueOf(swarmsDone));
-        p.setProperty("elitesKilled", String.valueOf(elitesKilled));
-        p.setProperty("bossesKilled", String.valueOf(bossesKilled));
-        p.setProperty("bossDead", bossDead ? "1" : "0");
-        p.setProperty("chestLeft", find(Pickup.Kind.BOSS_CHEST) != null ? "1" : "0");
-        p.setProperty("pendingLevels", String.valueOf(pendingLevels));
-        p.setProperty("pendingChests", String.valueOf(pendingChests));
-        for (Perk k : Perk.values()) if (pl.perk[k.ordinal()] > 0) p.setProperty("perk." + k.name(), String.valueOf(pl.perk[k.ordinal()]));
-        p.setProperty("loot", String.valueOf(loot.size()));
-        for (int i = 0; i < loot.size(); i++) p.setProperty("loot." + i, loot.get(i).encode());
-        p.setProperty("gear", String.valueOf(gear.size()));
-        for (int i = 0; i < gear.size(); i++) p.setProperty("gear." + i, gear.get(i).encode());
-        try {
-            Files.createDirectories(path.getParent());
-            try (Writer out = Files.newBufferedWriter(path)) {
-                p.store(out, "Spellblade roguelike run in progress");
-            }
-        } catch (IOException e) {
-            System.err.println("Could not save the run: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Picks a saved run back up: same gear, same picks, same level and gold, back at the same point on the stage's
-     * clock (a boss fight in progress restarts from the boss's warning). Null if there's no readable save.
-     */
-    static Run load(World w) {
-        Properties p = readSaved();
-        if (p == null || p.getProperty("stage") == null) return null;
-        long seed;
-        try { seed = Long.parseLong(p.getProperty("seed", "1")); } catch (NumberFormatException e) { seed = 1; }
-        Run r = new Run(seed + 7919);
-        for (int i = 0; i < Profile.intOf(p, "gear"); i++) {
-            Item it = Item.decode(p.getProperty("gear." + i, ""));
-            if (it != null) r.gear.add(it);
-        }
-        for (int i = 0; i < Profile.intOf(p, "loot"); i++) {
-            Item it = Item.decode(p.getProperty("loot." + i, ""));
-            if (it != null) r.loot.add(it);
-        }
-        int stage = Math.max(0, Math.min(STAGES - 1, Profile.intOf(p, "stage")));
-        w.level = Level.arena(stage);
-        Player pl = r.makePlayer(w.level, false);
-        int[] ranks = new int[Perk.values().length];
-        for (Perk k : Perk.values()) ranks[k.ordinal()] = Math.min(Perk.EVOLVED, Profile.intOf(p, "perk." + k.name()));
-        Perk.reapply(pl, ranks);
-        pl.level = Math.max(1, Profile.intOf(p, "level"));
-        pl.xpNext = xpFor(pl.level);
-        pl.xp = Math.min(pl.xpNext - 1, Profile.intOf(p, "xp"));
-        w.player = pl;
-        w.kills = Profile.intOf(p, "kills");
-        r.gold = Profile.intOf(p, "gold");
-        r.runTime = parse(p, "runTime");
-        r.enterStage(w, stage, false);
-        r.rerolls = Profile.intOf(p, "rerolls");
-        r.reviveUsed = "1".equals(p.getProperty("reviveUsed"));
-        r.elitesDone = Math.min(ELITE_TIMES.length, Profile.intOf(p, "elitesDone"));
-        r.swarmsDone = Math.min(SWARM_TIMES.length, Profile.intOf(p, "swarmsDone"));
-        r.elitesKilled = Profile.intOf(p, "elitesKilled");
-        r.bossesKilled = Profile.intOf(p, "bossesKilled");
-        r.pendingLevels = Profile.intOf(p, "pendingLevels");
-        r.pendingChests = Profile.intOf(p, "pendingChests");
-        r.stageTime = Math.min(parse(p, "stageTime"), STAGE_TIME - BOSS_WARNING);
-        if ("1".equals(p.getProperty("bossDead"))) {           // saved after the boss: the portal (and the chest, if unopened) are waiting
-            r.bossDead = r.bossSpawned = true;
-            r.stageTime = STAGE_TIME;
-            double cx = w.level.spawnX, cy = w.level.spawnY;
-            Util.Vec chest = r.clearSpot(w, cx + 160, cy + 40, 40), portal = r.clearSpot(w, cx, cy - 200, 60);
-            if ("1".equals(p.getProperty("chestLeft"))) r.pickups.add(new Pickup(Pickup.Kind.BOSS_CHEST, chest.x(), chest.y(), 0));
-            r.pickups.add(new Pickup(Pickup.Kind.PORTAL, portal.x(), portal.y(), 0));
-        }
-        double hp = parse(p, "hp");
-        pl.hp = hp > 0 ? Math.min(pl.maxHp, hp) : pl.maxHp;
-        w.notice = "Run loaded";
-        w.noticeHint = "Stage " + (stage + 1) + " at " + clock(r.stageTime) + ".";
-        w.noticeTimer = 4;
-        return r;
-    }
-
-    /** A short description of the saved run for the main menu ("Stage 2  -  Lv 14  -  3:12"), or null if there isn't one. */
-    static String describeSaved() {
-        Properties p = readSaved();
-        if (p == null) return null;
-        int st = Profile.intOf(p, "stage"), lv = Profile.intOf(p, "level");
-        double t = parse(p, "stageTime");
-        return "Stage " + (st + 1) + "   -   Lv " + lv + "   -   " + clock(t);
-    }
-
-    static Properties readSaved() {
-        Properties p = new Properties();
-        try (Reader r = Files.newBufferedReader(file())) {
-            p.load(r);
-            return p;
-        } catch (IOException | RuntimeException e) {
-            return null;
-        }
     }
 
     static double parse(Properties p, String key) {
@@ -924,12 +873,9 @@ final class Run {
         return s / 60 + ":" + String.format(java.util.Locale.ROOT, "%02d", s % 60);
     }
 
-    /** Pickups of a kind, for the HUD's arrows. */
+    /** The first pickup of a kind (for the HUD). */
     Pickup find(Pickup.Kind k) {
         for (Pickup pk : pickups) if (pk.kind == k) return pk;
         return null;
     }
-
-    /** Iterator over pickups (the renderer draws them). */
-    Iterator<Pickup> pickupIterator() { return pickups.iterator(); }
 }

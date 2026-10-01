@@ -5,7 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The roguelike run's skills: every {@link Perk.Kind#SKILL} you've picked fires on its own, on its own cooldown, at
+ * A fight's skills: every {@link Perk.Kind#SKILL} you've picked fires on its own, on its own cooldown, at
  * whatever is nearest — the sword stays yours to swing. Numbers per rank are the arrays below, indexed by rank (index 0
  * unused, 6 = evolved); the text in {@link Perk} describes them, so keep the two in step.
  */
@@ -150,7 +150,7 @@ final class Arsenal {
             double[] prev = points.get(points.size() - 1);
             points.add(new double[]{current.x, current.y - current.z});
             double ang = Util.angleTo(prev[0], prev[1], current.x, current.y);
-            strike(w, p, current, dmg, Math.cos(ang) * 90, Math.sin(ang) * 90, BOLT_STUN[r], Ability.LIGHTNING.color);
+            strike(w, p, current, dmg, Math.cos(ang) * 90, Math.sin(ang) * 90, BOLT_STUN[r], Perk.LIGHTNING.color);
             w.effects.add(Effect.particle(current.x, current.y, 0, 0, 0.3, "fx.impact", -1, 1, 0, 3));
             w.soundAt(Snd.ZAP_HIT, current.x, current.y, 0.04 * (n + n0), 1, 1);
             w.smashNear(current.x, current.y, 50);
@@ -166,7 +166,7 @@ final class Arsenal {
         }
         double[] xs = new double[points.size()], ys = new double[points.size()];
         for (int k = 0; k < xs.length; k++) { xs[k] = points.get(k)[0]; ys[k] = points.get(k)[1]; }
-        w.effects.add(Effect.bolt(xs, ys, Ability.LIGHTNING.color, w.rng));
+        w.effects.add(Effect.bolt(xs, ys, Perk.LIGHTNING.color, w.rng));
     }
 
     /** One of the (up to) eight nearest solid enemies within range, not in {@code skip}. */
@@ -190,7 +190,7 @@ final class Arsenal {
             Util.Vec at = w.level.clamp(t.x, t.y, 0);
             double radius = ICE_RADIUS[r];
             w.zones.add(new Zone(at.x(), at.y(), radius, ICE_TIME[r], ICE_DMG[r] * p.spellPower, ICE_SLOW[r]));
-            w.effects.add(Effect.ring(at.x(), at.y(), 10, radius, 0.35, Ability.ICE_STORM.color, true));
+            w.effects.add(Effect.ring(at.x(), at.y(), 10, radius, 0.35, Perk.ICE_STORM.color, true));
             w.soundAt(Snd.CAST_ICE, at.x(), at.y());
             if (ICE_FREEZE[r] > 0) {
                 for (Enemy e : w.enemies) {
@@ -208,7 +208,7 @@ final class Arsenal {
         if (p.hp > p.maxHp * 0.6 || p.hp <= 0) return false;
         p.heal(w, p.maxHp * HEAL_FRAC[r]);
         w.sound(Snd.CAST_HEAL);
-        w.effects.add(Effect.ring(p.x, p.y, 10, 60, 0.45, Ability.HEAL.color, true));
+        w.effects.add(Effect.ring(p.x, p.y, 10, 60, 0.45, Perk.HEALING.color, true));
         for (int k = 0; k < 9; k++) {
             double a = k * Math.PI * 2 / 9 + w.rng.nextDouble();
             w.effects.add(Effect.particle(p.x + Math.cos(a) * 26, p.y + 6 + Math.sin(a) * 10, 0, 0, 0.7 + w.rng.nextDouble() * 0.4, "fx.plus", -1, 0.4, 70 + w.rng.nextDouble() * 40, 3));

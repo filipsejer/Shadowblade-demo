@@ -20,13 +20,13 @@ import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 
 /**
- * The screens that sit on the title backdrop ({@link World#showTitle}: the hero in a forest clearing with the horde
- * circling): the main menu, and the Classic Campaign's own menu and chapter list. The scene is graded to dusk with a
- * pool of warm light on the hero and fireflies drifting up; the left side darkens to hold the lettering and the rows
- * (see {@link MenuStyle} for the shared look), and a card in the corner says something useful about the selection.
+ * The main menu, on the title backdrop ({@link World#showTitle}: the hero in a forest clearing with the horde
+ * circling). The scene is graded to dusk with a pool of warm light on the hero and fireflies drifting up; the left side
+ * darkens to hold the lettering and the rows (see {@link MenuStyle} for the shared look), and a card in the corner
+ * shows your saved game. The Armory uses the same backdrop.
  */
 final class TitleScreen {
-    private final MenuStyle.Glide mainGlide = new MenuStyle.Glide(), classicGlide = new MenuStyle.Glide(), chapterGlide = new MenuStyle.Glide();
+    private final MenuStyle.Glide mainGlide = new MenuStyle.Glide();
     private BufferedImage lighting;
     private int lightX, lightY;
 
@@ -116,41 +116,31 @@ final class TitleScreen {
         MenuStyle.antialias(g);
         drawBackdrop(g, w, width, height);
         double s = MenuStyle.scale(height), x0 = MenuStyle.left(width);
-        double y0 = title(g, "SPELLBLADE", 92, "SURVIVORS", "Hold the line.  Grow stronger.  Slay the three.", x0, height, s, w.time, true);
+        double y0 = title(g, "SPELLBLADE", 92, "THE BLIGHT", "Explore the forest.  Answer the call.  Burn out the Blight.", x0, height, s, w.time, true);
 
         int sel = w.menuCursor;
         String[] details = new String[World.MAIN_MENU.length];
-        if (w.savedRun != null) details[1] = w.savedRun.replace("   -   ", DOT);                   // what CONTINUE would pick up
         boolean[] disabled = new boolean[World.MAIN_MENU.length];
-        disabled[1] = w.savedRun == null;
+        disabled[1] = w.savedGame == null;
         double rowH = 54 * s;
         MenuStyle.rows(g, mainGlide, World.MAIN_MENU, details, disabled, sel, sel == 0 && w.confirmNew, x0, y0, rowH, 29 * s, 470 * s, s, w.time);
 
         String[] info = {
-            w.confirmNew ? "You have a run in progress. Press ENTER again to abandon it and start over." : "Begin a new run: three stages, three bosses, and only your sword to start.",
-            w.savedRun != null ? "Pick up your saved run right where you left it." : "No run in progress. Start a new game to make one.",
-            "Equip, upgrade and salvage the gear you've found. It comes with you into every run.",
-            "The original room-by-room adventure, with its opening story.",
-            "Leave the clearing. The horde will wait.",
+            w.confirmNew ? "This throws away your saved game: its gold, gear and story. Press ENTER again to start over." : "Begin the story: a wandering swordsman, a camp in the woods, and a sickness in the trees.",
+            w.savedGame != null ? "Pick up your adventure right where you saved it." : "No saved game yet. Start a new one.",
+            "Equip, upgrade and salvage the gear you've found and bought.",
+            "Leave the clearing. The forest will wait.",
         };
         MenuStyle.infoLine(g, info[sel], x0, y0 + World.MAIN_MENU.length * rowH + 12 * s, 380 * s, s, sel == 0 && w.confirmNew);
+        if (w.savedGame != null) drawLegend(g, w, width, height, s);
         MenuStyle.keys(g, x0, height - 30 * s, s, new String[][]{{"W", "S"}, {"ENTER"}, {"M"}}, new String[]{"Navigate", "Select", "Mute"});
-        drawLegend(g, w, width, height, s);
     }
 
-    /** The corner card: gold, items, what's worn (six slot icons in their rarity colours) and your best run. */
+    /** The corner card: the saved game's gold, what's worn (six slot icons in their rarity colours), and how far along it is. */
     private void drawLegend(Graphics2D g, World w, int width, int height, double s) {
         Profile p = w.profile;
-        String line1, line2;
-        if (p.runs == 0) {
-            line1 = "No runs yet. The horde awaits.";
-            line2 = p.items.isEmpty() ? "Gear you find will appear above." : p.items.size() + " items in your bag";
-        } else {
-            line1 = p.runs + (p.runs == 1 ? " run" : " runs") + DOT + p.victories + (p.victories == 1 ? " victory" : " victories")
-                + DOT + p.items.size() + " items";
-            line2 = "Best: stage " + Math.min(Run.STAGES, Math.max(1, p.bestStage)) + DOT + "level " + p.bestLevel + DOT
-                + p.bestKills + " kills" + DOT + Run.clock(p.bestTime);
-        }
+        String line1 = w.savedGame.replace("   -   ", DOT);
+        String line2 = p.runs + (p.runs == 1 ? " fight" : " fights") + DOT + p.victories + " won" + DOT + p.items.size() + " items";
         g.setFont(MenuStyle.sans(Font.PLAIN, 13 * s));
         FontMetrics lm = g.getFontMetrics();
         double cw = Math.max(318 * s, Math.max(lm.stringWidth(line1), lm.stringWidth(line2)) + 38 * s), ch = 144 * s;   // wide enough for its text
@@ -158,7 +148,7 @@ final class TitleScreen {
         MenuStyle.card(g, x, y, cw, ch, null);
 
         double px = x + 18 * s, py = y + 26 * s;
-        MenuStyle.label(g, "YOUR LEGEND", px, py, s, new Color(255, 214, 120, 220));
+        MenuStyle.label(g, "YOUR ADVENTURE", px, py, s, new Color(255, 214, 120, 220));
         Art.frame("run.coin", w.time, 6).draw(g, x + cw - 92 * s, py + 1 * s, 2.5 * s, false);
         g.setFont(MenuStyle.sans(Font.BOLD, 15 * s));
         MenuStyle.shadowed(g, String.valueOf(p.gold), x + cw - 78 * s, py + 1 * s, GOLD);
@@ -183,98 +173,5 @@ final class TitleScreen {
         g.setStroke(new java.awt.BasicStroke(it == null ? 1f : 1.8f));
         g.draw(box);
         Art.frames("item." + sl.name().toLowerCase())[0].draw(g, x + size / 2, y + size / 2, 2 * size / 38, false, 0, it == null ? 0.22f : 1f);
-    }
-
-    // ------------------------------------------------------------------ the Classic Campaign
-
-    /** The campaign's own menu: PLAY (with or without the opening story) and SELECT CHAPTER, and how to play it. */
-    void drawClassic(Graphics2D g, World w, int width, int height) {
-        MenuStyle.antialias(g);
-        double s = MenuStyle.scale(height), x0 = MenuStyle.left(width);
-        double y0 = title(g, "CLASSIC", 84, "THE ORIGINAL ADVENTURE", "Clear the rooms.  Chain combos.  Grow stronger every level.", x0, height, s, w.time, false);
-
-        String[] labels = {"PLAY", "SELECT CHAPTER"};
-        String[] details = {w.tutorialOn ? "with the opening story" : "straight to level 1", "any level" + DOT + "character level " + World.CHAPTER_SELECT_LEVEL};
-        double rowH = 54 * s;
-        int sel = Math.min(w.menuCursor, 1);
-        MenuStyle.rows(g, classicGlide, labels, details, null, sel, false, x0, y0, rowH, 29 * s, 470 * s, s, w.time);
-        String[] info = {
-            w.tutorialOn ? "Wake in a forest clearing, with a talkative squirrel to remind you how to fight." : "Skip the opening story and start in the hub of the Whispering Forest.",
-            "Jump into any level with a character already at level " + World.CHAPTER_SELECT_LEVEL + " and skill points to spend.",
-        };
-        MenuStyle.infoLine(g, info[sel], x0, y0 + labels.length * rowH + 12 * s, 380 * s, s, false);
-        MenuStyle.keys(g, x0, height - 30 * s, s, new String[][]{{"W", "S"}, {"ENTER"}, {"T"}, {"ESC"}},
-            new String[]{"Navigate", "Select", "Opening story " + (w.tutorialOn ? "on" : "off"), "Back"});
-
-        // how the campaign plays: its controls differ from a run's
-        String[][] controls = {{"W A S D", "Move"}, {"ENTER", "Attack, and confirm"}, {"SPACE", "Roll"}, {"SHIFT", "Quick-cast magic"},
-            {"TAB", "Lock on to an enemy"}, {"E", "Talk to trainers"}};
-        double cw = 318 * s, ch = 44 * s + controls.length * 29 * s, x = width - cw - 28 * s, y = height - ch - 26 * s;
-        MenuStyle.card(g, x, y, cw, ch, null);
-        MenuStyle.label(g, "HOW IT PLAYS", x + 18 * s, y + 26 * s, s, new Color(255, 214, 120, 220));
-        double ry = y + 58 * s;
-        for (String[] c : controls) {
-            MenuStyle.keyCap(g, c[0], x + 18 * s, ry, s);
-            g.setFont(MenuStyle.sans(Font.PLAIN, 13 * s));
-            MenuStyle.shadowed(g, c[1], x + 118 * s, ry - 1 * s, TEXT);
-            ry += 29 * s;
-        }
-    }
-
-    /** Roman numerals for the chapter rows. */
-    private static final String[] NUMERALS = {"I", "II", "III", "IV", "V"};
-
-    /** The chapter list: one row per level and the prototype, with the selected level's boss waiting in the corner card. */
-    void drawChapters(Graphics2D g, World w, int width, int height) {
-        MenuStyle.antialias(g);
-        double s = MenuStyle.scale(height), x0 = MenuStyle.left(width);
-        double y0 = title(g, "CHAPTERS", 84, "CHOOSE YOUR BATTLE", "Every level's hub, a hero at level " + World.CHAPTER_SELECT_LEVEL + ", skill points unspent.",
-            x0, height, s, w.time, false);
-
-        int n = Level.COUNT + 1, sel = Math.min(w.chapterCursor, n - 1);
-        String[] labels = new String[n], details = new String[n];
-        for (int i = 0; i < Level.COUNT; i++) {
-            String name = Level.THEMES[i].title.replaceFirst("^The ", "").toUpperCase();
-            labels[i] = NUMERALS[i] + "    " + name;
-        }
-        labels[Level.COUNT] = "PROTOTYPE";
-        details[Level.COUNT] = "work in progress";
-        double rowH = 50 * s;
-        MenuStyle.rows(g, chapterGlide, labels, details, null, sel, false, x0, y0, rowH, 25 * s, 560 * s, s, w.time);
-        String info = sel < Level.COUNT ? "Start in its hub. Clear the rooms, then face the " + titleCase(Level.BOSS_NAMES[sel]) + "."
-            : "A hand-sketched layout being tried out. No enemies, no boss: just walk around.";
-        MenuStyle.infoLine(g, info, x0, y0 + n * rowH + 12 * s, 380 * s, s, false);
-        MenuStyle.keys(g, x0, height - 30 * s, s, new String[][]{{"W", "S"}, {"ENTER"}, {"ESC"}}, new String[]{"Navigate", "Start", "Back"});
-
-        // the corner card: who waits at the end of the selected level
-        double cw = 318 * s, ch = 250 * s, x = width - cw - 28 * s, y = height - ch - 26 * s;
-        boolean proto = sel >= Level.COUNT;
-        Color tint = proto ? new Color(120, 200, 235) : switch (Level.THEMES[sel]) { case FOREST -> new Color(120, 220, 110); case CITY -> new Color(120, 150, 255); case LAB -> new Color(150, 255, 170); };
-        MenuStyle.card(g, x, y, cw, ch, tint);
-        MenuStyle.label(g, proto ? "PROTOTYPE" : "CHAPTER " + NUMERALS[sel] + DOT + "THE BOSS", x + 18 * s, y + 26 * s, s, new Color(255, 214, 120, 220));
-        String sprite = proto ? "town.child.idle" : Level.THEMES[sel].key + ".boss.idle";
-        Sprite boss = Art.frame(sprite, w.time, proto ? 1.8 : 2.5);
-        double feet = y + ch - 60 * s, room = feet - (y + 40 * s);                        // between the label and the name
-        double spriteScale = Math.min(proto ? 4 * s : 3 * s, room / Math.max(1, boss.ay * boss.k));
-        g.setColor(new Color(0, 0, 0, 90));
-        g.fill(new Ellipse2D.Double(x + cw / 2 - 60 * s, feet - 10 * s, 120 * s, 20 * s));
-        boss.draw(g, x + cw / 2, feet, spriteScale, false);
-        g.setFont(MenuStyle.serif(Font.BOLD, 22 * s, 0.08));
-        String name = proto ? "A SKETCH" : Level.BOSS_NAMES[sel];
-        FontMetrics fm = g.getFontMetrics();
-        MenuStyle.shadowed(g, name, x + (cw - fm.stringWidth(name)) / 2, y + ch - 28 * s, GOLD);
-        g.setFont(MenuStyle.sans(Font.PLAIN, 12 * s));
-        fm = g.getFontMetrics();
-        String sub = proto ? "no enemies here" : Level.THEMES[sel].title;
-        MenuStyle.shadowed(g, sub, x + (cw - fm.stringWidth(sub)) / 2, y + ch - 11 * s, DIM);
-    }
-
-    private static String titleCase(String s) {
-        StringBuilder out = new StringBuilder();
-        for (String word : s.toLowerCase().split(" ")) {
-            if (out.length() > 0) out.append(' ');
-            out.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
-        }
-        return out.toString();
     }
 }

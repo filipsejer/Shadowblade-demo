@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.Random;
 
 /**
- * A piece of equipment: found in chests during a roguelike run, kept between runs in the {@link Profile}, and worn in
+ * A piece of equipment: found in chests (or bought), kept between fights in the {@link Profile}, and worn in
  * the Armory. Each one fills a {@link Slot}, has a {@link Rarity}, a handful of rolled {@link Stat}s, and (legendaries
  * only) a {@link Unique} effect. Gold spent in the Armory raises its {@link #upgrade} level, which scales every stat.
  */

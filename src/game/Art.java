@@ -18,7 +18,6 @@ final class Art {
 
     static {
         PeopleArt.register(SPRITES);
-        SquirrelArt.register(SPRITES);
         BreakableArt.register(SPRITES);
         CreatureArt.register(SPRITES);
         FxArt.register(SPRITES);
