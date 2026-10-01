@@ -79,7 +79,7 @@ final class WorldRenderer {
             if (!view.intersects(l.x() - 140, l.y() - 240, 280, 300)) continue;
             Sprite sprite = landmark(l.kind());
             items.add(new Item(l.y(), () -> sprite.draw(g, l.x(), l.y(), Art.SCALE, false)));
-            shadow(g, l.x(), l.y() - 2, sprite.w * Art.SCALE * (l.kind().equals("oak") ? 0.3 : 0.4), sprite.w * Art.SCALE * 0.1);
+            shadow(g, l.x(), l.y() - 2, sprite.w * sprite.k * Art.SCALE * (l.kind().equals("oak") ? 0.3 : 0.4), sprite.w * sprite.k * Art.SCALE * 0.1);
         }
         for (Breakable b : level.breakables) {
             if (b.broken || !view.intersects(b.x - 60, b.y - 90, 120, 120)) continue;
@@ -177,6 +177,7 @@ final class WorldRenderer {
     /** The sprite of a placed piece of scenery (see {@link Level.Landmark}). */
     private Sprite landmark(String kind) {
         return landmarks.computeIfAbsent(kind, k -> {
+            if (Art.has("landmark." + k)) return Art.frames("landmark." + k)[0];        // drawn art, when there is some
             ThemeArt a = ThemeArt.of(Theme.FOREST);
             return switch (k) {
                 case "oak" -> a.tall[0];
@@ -213,7 +214,7 @@ final class WorldRenderer {
         s.draw(g, p.x + sway, p.y + 14, Art.SCALE, flip, 0, alpha);
         if (dazed) {
             Sprite[] star = Art.frames("fx.star");
-            double top = p.y + 14 - s.ay * Art.SCALE;
+            double top = p.y + 14 - s.above(Art.SCALE);
             for (int i = 0; i < 3; i++) {
                 double a = w.time * 4 + i * Math.PI * 2 / 3;
                 star[(int) (w.time * 8 + i) % star.length].draw(g, p.x + sway + Math.cos(a) * 22, top + 10 + Math.sin(a) * 6, 2, false);
@@ -236,7 +237,7 @@ final class WorldRenderer {
         double shiver = pose == Tutorial.Squirrel.Pose.SCARED ? Math.sin(w.time * 50) * 1.5 : 0;
         s.draw(g, q.x + shiver, q.y - hop, Art.SCALE, q.faceLeft);
         if (q.alarm > 0) {                                                       // a "!" in a bubble
-            double bx = q.x, by = q.y - s.ay * Art.SCALE - 26 - 5 * Math.sin(w.time * 18);
+            double bx = q.x, by = q.y - s.above(Art.SCALE) - 26 - 5 * Math.sin(w.time * 18);
             g.setColor(Color.WHITE);
             g.fill(new RoundRectangle2D.Double(bx - 12, by - 20, 24, 30, 10, 10));
             g.setColor(new Color(200, 50, 50));
@@ -421,7 +422,7 @@ final class WorldRenderer {
     private void drawEnemy(Graphics2D g, World w, Enemy e) {
         Sprite s = spriteFor(w, e);
         double x = e.x, fy = e.y + e.radius * 0.85 - hover(w, e) - e.z;   // airborne: floats up off its shadow, which stays on the ground
-        int sc = Art.SCALE;
+        double sc = Art.SCALE;
         if (e.intangible()) {                                             // shadow mode: a dark see-through silhouette with a violet edge
             float a = 0.6f;
             if (e.spawnIn <= 0 && e.shadowTimer < 1.0) a *= (float) (0.55 + 0.45 * Math.abs(Math.sin(e.shadowTimer * 16)));
@@ -435,7 +436,7 @@ final class WorldRenderer {
         float alpha = e.spawnIn > 0 ? 0.35f : 1f;
         if (e.type == Enemy.Type.SHADE && e.spawnIn <= 0 && e.shadowTimer < 1.0) alpha *= (float) (0.6 + 0.4 * Math.abs(Math.sin(e.shadowTimer * 16)));
         if (e.elite) {                                                          // an elite: bigger, with a gold glow round it
-            sc = Art.SCALE + 1;
+            sc = s.k < 1 ? Art.SCALE * 1.5 : Art.SCALE + 1;                    // drawn art: 3 units a pixel, so its pixels stay even
             double k = 0.5 + 0.5 * Math.sin(w.time * 5);
             for (int[] o : new int[][]{{-3, 0}, {3, 0}, {0, -3}, {0, 3}}) {
                 s.drawSilhouette(g, x + o[0], fy + o[1], sc, e.faceLeft, 0xFFC840, (float) (0.35 + 0.3 * k) * alpha);
@@ -547,7 +548,7 @@ final class WorldRenderer {
     private void drawDizzy(Graphics2D g, World w, Enemy e) {
         Sprite[] star = Art.frames("fx.star");
         Sprite s = spriteFor(w, e);
-        double top = e.y + e.radius * 0.85 - hover(w, e) - e.z - s.ay * Art.SCALE;
+        double top = e.y + e.radius * 0.85 - hover(w, e) - e.z - s.above(Art.SCALE);
         for (int i = 0; i < 3; i++) {
             double a = w.time * 6 + i * Math.PI * 2 / 3;
             star[(int) (w.time * 8 + i) % star.length].draw(g, e.x + Math.cos(a) * 16, top + 6 + Math.sin(a) * 4, 2, false);
@@ -569,7 +570,7 @@ final class WorldRenderer {
     private void drawEnemyBar(Graphics2D g, World w, Enemy e) {
         if (e.spawnIn > 0 || e.type == Enemy.Type.BOSS || e.intangible() || e.hp <= 0) return;   // the boss has its own big bar
         Sprite s = spriteFor(w, e);
-        double top = e.y + e.radius * 0.85 - hover(w, e) - e.z - s.ay * Art.SCALE;
+        double top = e.y + e.radius * 0.85 - hover(w, e) - e.z - s.above(Art.SCALE);
         double bw = Math.max(30, e.radius * 2);
         double x = e.x - bw / 2, y = top - 10;
         g.setColor(new Color(20, 20, 22, 210));

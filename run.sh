@@ -24,7 +24,7 @@ done
 if [ "$SAFE" = "1" ]; then
     java -Dsun.java2d.metal=false -Dsun.java2d.opengl=false $OPTS \
          -Xmx512m -XX:ErrorFile=./hs_err_pid%p.log \
-         -cp out game.Main 2>&1 | tee game.log
+         -cp out:res game.Main 2>&1 | tee game.log
 else
-    java $OPTS -cp out game.Main
+    java $OPTS -cp out:res game.Main
 fi

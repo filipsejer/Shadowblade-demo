@@ -5,7 +5,7 @@ Top-down action roguelike with a Kingdom Hearts-style combat feel. Plain Java (S
 The main game is a **Survivor.io / Megabonk-style roguelike** (see **Roguelike runs** below): hold off endless hordes across
 three stages, level up and pick your powers, beat three bosses, and keep the equipment you find for future runs. The
 original room-by-room adventure is still there as the **Classic Campaign**.
-All the art is pixel art painted by code at startup (there are no image files): see **Graphics engine** below. All the music and sound effects are
+The monsters, the bosses, the forest's trees and rocks, the crates and the chests are drawn pixel art made with [PixelLab](https://pixellab.ai) (the PNGs in `res/art`). Everything else is pixel art painted by code at startup: see **Graphics engine** below. All the music and sound effects are
 synthesised by code too (there are no audio files): see **Sound engine** below. The game opens with a short story that teaches the controls (see **The opening story**). Level 1 is **The Whispering Forest**, level 2 is **The Neon City**, and level 3 is **The Mad Scientist's Laboratory**.
 
 ## Just want to play it?
@@ -28,7 +28,14 @@ needs doing once; after that it opens normally. If that doesn't work, **System S
 ./run.sh notutorial   # the title screen starts with the opening story switched off (T on the title screen switches it back on)
 ```
 
-Needs a JDK 17+.
+Needs a JDK 17+. The drawn sprites are loaded from `res/` on the classpath (`run.sh` adds it). Without it, the game
+still runs, with the older code-painted sprites in their place.
+
+To rebuild `dist/Spellblade.jar` (compiled for Java 17, with the images inside):
+
+```sh
+rm -rf out_dist && mkdir out_dist && javac --release 17 -d out_dist src/game/*.java && (cd out_dist && printf 'Main-Class: game.Main\n' > ../manifest.tmp && jar cfm ../dist/Spellblade.jar ../manifest.tmp game -C ../res art) && rm manifest.tmp && rm -rf out_dist
+```
 
 ## Controls
 
@@ -232,8 +239,9 @@ however the run ends**, and the gold you picked up.
 | `WorldRenderer.java` | Draws the world itself: level, shadows, depth-sorted sprites, telegraphs, projectiles, effects, lock ring, health bars |
 | `LevelView.java` | The level's background: bakes floors, walls, props and scenery into cached image chunks; draws barriers over closed doors, and glows |
 | `PixelCanvas.java` / `Sprite.java` / `Art.java` | The graphics engine: a pixel painting canvas, an anchored sprite, and the sprite atlas |
-| `PeopleArt.java` | Sprites for the hero, the guide and the three shops |
-| `CreatureArt.java` | Sprites for the enemies and bosses, in forest, city and laboratory versions, plus the shade |
+| `ImportedArt.java` / `res/art/` | The drawn (PixelLab) sprites: loads the PNG strips and their anchors, and makes the poses that weren't drawn (walks, wind-ups, bosses' second phase). They replace the painted sprites of the same names |
+| `PeopleArt.java` | Sprites for the hero (painted 1.5x finer than the rest, to match the drawn art's pixels), the guide and the three shops |
+| `CreatureArt.java` | Painted sprites for the enemies and bosses (the fallback when the drawn ones are missing), in forest, city and laboratory versions, plus the shade |
 | `FxArt.java` / `PixelFont.java` | Attack and effect sprites (slashes, fire, lightning, frost, particles, projectiles) and the digit font for damage numbers |
 | `Theme.java` / `ThemeArt.java` | The forest, city and laboratory looks: floor tiles, walls, barriers, colours |
 | `ForestProps.java` / `CityProps.java` / `LabProps.java` | Trees, bushes, mushrooms; lamps, cars, crates; tanks, tesla coils, server racks, lab benches, monitors: the scenery |
@@ -297,7 +305,7 @@ exists purely to give the story somewhere to land you, and later to be the way b
 
 ## Graphics engine
 
-Everything you see is drawn by `game/*Art.java` code into small pixel images (`PixelCanvas`), scaled up 3x with
+Apart from the drawn art (see **Drawn art** below), everything you see is painted by `game/*Art.java` code into small pixel images (`PixelCanvas`), scaled up 3x with
 nearest-neighbour filtering so the pixels stay crisp (`Art.SCALE`). The images are built once when the game starts.
 
 - **`PixelCanvas`** is a grid of ARGB pixels with drawing helpers: rectangles, ellipses, lines, polygons, `outline`
@@ -318,7 +326,31 @@ nearest-neighbour filtering so the pixels stay crisp (`Art.SCALE`). The images a
 - **Themes:** `Level.theme` picks the art set. The forest has grass, flagstones, dirt paths, hedges, bramble barriers
   and tree canopy; the city has asphalt, sidewalks, brick, rolling shutters and rooftops; the laboratory has pale tile, a checkerboard lobby, teal panel walls with hazard bands, red laser gates over closed doors and a steel blast door on the sealed one. Enemies change with the
   theme too: toadstools, foxes, snap-blooms, stump golems and the Treant in the forest; rats, cats, drones, dumpsters and
-  the Warden robot in the city; green oozes, wind-up mice, acid flasks, stitched mutants and the Mad Scientist in the lab. The shade is the same in all three.
+  the Warden robot in the city; green oozes, wind-up mice, acid flasks, hulking green mutants and the Mad Scientist in the lab. The shade is the same in all three.
+
+### Drawn art
+
+The monsters and the props you fight among are drawn pixel art, made with PixelLab and loaded by `ImportedArt` from
+`res/art`. Each PNG is a horizontal strip of frames. `res/art/anchors.properties` gives each strip's anchor (the feet,
+in the frame's pixels) and its frame count. A strip replaces the painted sprite of the same name, with `_` for `.`
+(`crate_forest.png` becomes `crate.forest`). Any sprite without a PNG keeps its painted look.
+
+- **Finer pixels.** One pixel of drawn art is 2 world units (`ImportedArt.PIXEL`), against 3 for the painted art.
+  `Sprite.k` holds that ratio, so code keeps drawing everything at `Art.SCALE` and both kinds come out the right size.
+  An elite is drawn 1.5x so its pixels stay even.
+- **The monsters** have one drawn pose each. Their walk (a squash and a bob) and their wind-up (rearing back) are made
+  from it in code.
+- **The bosses** have one drawn pose each too. Idle, walk, slam and burst are made from it, and so is the second
+  phase under half health: the Treant's leaves turn autumn orange, the Warden runs red, and the Mad Scientist's
+  coat and hair go a sickly green. A `<theme>_boss2.png` would replace that recolour.
+- **Scenery:** the forest's oak, bush, boulder and stump (`landmark_*`), the crates and barrels of all three stages,
+  and the elite and boss chests. The city and lab crates are recolours of the forest's.
+- The images were cleaned up before they were added: baked-in drop shadows and stray specks removed, each cropped to
+  its pixels, and the alley cat's all-black body lightened so it shows on the dark streets.
+
+The hero, the floors, walls, effects, pickups, NPCs and the city and lab scenery are still painted in code. The hero is
+painted on a grid 1.5x finer than the other painted art (`PeopleArt.Fine`), so their pixels are the same size as the
+monsters' around them.
 
 To add a sprite: paint it in the matching `*Art` class, register it under a name, and ask the atlas for that name where
 it's drawn. To add a theme: add it to the `Theme` enum, give it tiles and props in `ThemeArt`, and draw the enemies

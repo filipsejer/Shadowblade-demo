@@ -255,7 +255,7 @@ final class TitleScreen {
         String sprite = proto ? "town.child.idle" : Level.THEMES[sel].key + ".boss.idle";
         Sprite boss = Art.frame(sprite, w.time, proto ? 1.8 : 2.5);
         double feet = y + ch - 60 * s, room = feet - (y + 40 * s);                        // between the label and the name
-        double spriteScale = Math.min(proto ? 4 * s : 3 * s, room / Math.max(1, boss.ay));
+        double spriteScale = Math.min(proto ? 4 * s : 3 * s, room / Math.max(1, boss.ay * boss.k));
         g.setColor(new Color(0, 0, 0, 90));
         g.fill(new Ellipse2D.Double(x + cw / 2 - 60 * s, feet - 10 * s, 120 * s, 20 * s));
         boss.draw(g, x + cw / 2, feet, spriteScale, false);

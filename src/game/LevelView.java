@@ -34,7 +34,7 @@ final class LevelView {
 
     private record Prop(Sprite sprite, double x, double y, boolean flip, int glow) {
         boolean touches(Rectangle2D v) {
-            double s = Art.SCALE;
+            double s = Art.SCALE * sprite.k;
             return v.intersects(x - sprite.ax * s, y - sprite.ay * s, sprite.w * s, sprite.h * s);
         }
     }
