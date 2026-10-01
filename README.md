@@ -120,8 +120,9 @@ The Classic Campaign's menu, its chapter list and the Armory share the same back
 gold serif headings, gliding selection, key caps, dark glass cards). So do a run's overlays, drawn over the darkened
 fight (`RunHud`). The pause menu has volume sliders and a card showing your build. The level-up / treasure cards are
 glass cards tinted in the perk's colour, with rank diamonds. The results screen has a gold VICTORY or a blood-red
-DEFEATED, a row of stat tiles, and the loot as small cards. The Classic Campaign's pause and "You died" screens
-(`CampaignScreens`) match them. The results and "You died" screens ignore keys for their first second
+DEFEATED, a row of stat tiles, and the loot as small cards. The Classic Campaign's pause and "You died" screens and
+the trainers' shops (`CampaignScreens`) match them. A shop shows the trainer's name as a gold heading, your skill points,
+what they teach (with costs), and the trainer above the selected upgrade's details. The results and "You died" screens ignore keys for their first second
 (`World.overTimer`), so an attack tapped just as you fall can't dismiss them unseen. The Classic menu has a card showing the
 campaign's own controls, since they differ from a run's. The chapter list shows the selected level's boss in its corner
 card. The Armory is three cards: what you're wearing and its total bonuses, your bag, and the selected item with what
@@ -212,6 +213,7 @@ however the run ends**, and the gold you picked up.
 | `Item.java` / `Profile.java` | Equipment (slots, rarities, stats, legendaries) and the persistent profile (gold, bag, what's worn, records) |
 | `TitleScreen.java` | The main menu and the Classic Campaign's menu and chapter list: the backdrop's dusk lighting and fireflies, the logo, the rows and the corner cards |
 | `ArmoryScreen.java` | The Armory screen |
+| `CampaignScreens.java` | The Classic Campaign's pause menu, "You died" screen and trainers' shops |
 | `MenuStyle.java` | The look those menus share: gold headings, gliding selection rows, key caps, glass cards, the serif font |
 | `RunHud.java` | A run's HUD, the level-up cards, a run's pause menu, the results screen, the Armory, and the perk icons |
 | `RunArt.java` | Sprites for gems, coins, crate pickups, chests, the portal, the orbiting sword and the equipment icons |

@@ -17,7 +17,6 @@ import java.awt.geom.Rectangle2D;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.util.List;
-import java.util.Locale;
 import java.util.Random;
 
 /** Draws a {@link World}: simple shapes on a grey floor, plain health bars, and the menu overlays. */
@@ -32,7 +31,6 @@ final class Renderer {
     private static final Color HP = new Color(70, 200, 90);
     private static final Color MP = new Color(70, 130, 255);
     private static final Color XP = new Color(255, 205, 70);
-    private static final Color PANEL = new Color(30, 30, 34, 235);
 
     private final Font f12 = new Font(Font.SANS_SERIF, Font.PLAIN, 12);
     private final Font f14 = new Font(Font.SANS_SERIF, Font.PLAIN, 14);
@@ -74,7 +72,7 @@ final class Renderer {
             g.fillRect(0, 0, width, height);
         }
         if (w.tutorial != null && w.state != World.State.TITLE) drawEyelids(g, w.tutorial, width, height);
-        boolean menu = w.state == World.State.TITLE || w.state == World.State.ARMORY || w.titleScene;
+        boolean menu = w.state == World.State.TITLE || w.state == World.State.ARMORY || w.state == World.State.UPGRADE || w.titleScene;
         if (w.run != null && w.state != World.State.RUN_END) runHud.drawHud(g, w, width, height);
         else if (!menu && w.state != World.State.RUN_END) drawHud(g, w, width, height);
         if (w.tutorial != null && w.state == World.State.PLAYING) drawDialogue(g, w.tutorial.dialogue, SQUIRREL, width, height);
@@ -94,7 +92,7 @@ final class Renderer {
             case TITLE -> titleScreen.draw(g, w, width, height);
             case CLASSIC -> titleScreen.drawClassic(g, w, width, height);
             case CHAPTER_SELECT -> titleScreen.drawChapters(g, w, width, height);
-            case UPGRADE -> drawStationMenu(g, w, width, height);
+            case UPGRADE -> campaignScreens.drawTrainer(g, w, width, height);
             case PAUSE -> { if (w.run != null) runHud.drawRunPause(g, w, width, height); else campaignScreens.drawPause(g, w, width, height); }
             case GAME_OVER -> campaignScreens.drawGameOver(g, w, width, height);
             case LEVEL_UP -> runHud.drawChoices(g, w, width, height);
@@ -440,97 +438,6 @@ final class Renderer {
 
     // ------------------------------------------------------------------ overlays
 
-    private void dim(Graphics2D g, int width, int height, int alpha) {
-        g.setColor(new Color(0, 0, 0, alpha));
-        g.fillRect(0, 0, width, height);
-    }
-
-    /** A trainer's menu: their upgrades on the left, the selected one's details on the right. */
-    private void drawStationMenu(Graphics2D g, World w, int width, int height) {
-        dim(g, width, height, 200);
-        Player p = w.player;
-        Level.Station station = w.activeStation;
-        Color accent = station.category().color;
-        double pw = 940, ph = 500;
-        double px = (width - pw) / 2, py = Math.max(16, (height - ph) / 2);
-        Color gold = new Color(255, 215, 90);
-
-        RoundRectangle2D panel = new RoundRectangle2D.Double(px, py, pw, ph, 18, 18);
-        g.setColor(PANEL);
-        g.fill(panel);
-        g.setColor(Util.alpha(accent, 0.8));
-        g.setStroke(new BasicStroke(2.5f));
-        g.draw(panel);
-
-        g.setFont(f26b);
-        g.setColor(accent);
-        g.drawString(station.name(), (float) (px + 30), (float) (py + 46));
-        g.setFont(f14);
-        g.setColor(new Color(200, 200, 210));
-        g.drawString(station.flavor(), (float) (px + 30), (float) (py + 72));
-        g.setFont(f18b);
-        right(g, "Skill points: " + p.skillPoints, px + pw - 30, py + 44, gold);
-
-        // rows
-        List<Upgrade> items = w.stationItems();
-        double rowH = 50, ry0 = py + 100;
-        for (int i = 0; i < items.size(); i++) {
-            Upgrade u = items.get(i);
-            boolean selected = i == w.stationCursor;
-            boolean affordable = !u.maxed() && p.skillPoints >= u.cost();
-            double ry = ry0 + i * rowH;
-            RoundRectangle2D row = new RoundRectangle2D.Double(px + 30, ry, 480, rowH - 6, 10, 10);
-            g.setColor(selected ? new Color(64, 64, 74) : new Color(40, 40, 46));
-            g.fill(row);
-            g.setColor(selected ? Color.WHITE : Util.alpha(u.accent(), 0.45));
-            g.setStroke(new BasicStroke(selected ? 2.5f : 1.5f));
-            g.draw(row);
-
-            g.setFont(f18b);
-            g.setColor(u.maxed() ? new Color(150, 150, 158) : Color.WHITE);
-            g.drawString(u.title(), (float) (px + 46), (float) (ry + 21));
-            g.setFont(f12);
-            g.setColor(new Color(185, 185, 195));
-            g.drawString(u.status(), (float) (px + 46), (float) (ry + 37));
-            g.setFont(f18b);
-            if (u.maxed()) right(g, "MAX", px + 496, ry + 28, new Color(150, 150, 158));
-            else right(g, u.cost() + " SP", px + 496, ry + 28, affordable ? gold : new Color(200, 100, 100));
-        }
-
-        // details of the selected row
-        if (!items.isEmpty()) {
-            Upgrade u = items.get(Math.min(w.stationCursor, items.size() - 1));
-            double dx = px + 540, dw = pw - 570;
-            g.setFont(f26b);
-            g.setColor(u.accent());
-            wrapped(g, u.title(), dx, py + 130, dw, 30);
-            g.setFont(f14);
-            g.setColor(new Color(185, 185, 195));
-            g.drawString(u.status(), (float) dx, (float) (py + 156));
-            g.setColor(Color.WHITE);
-            wrapped(g, u.description(), dx, py + 192, dw, 21);
-
-            g.setFont(f18b);
-            if (u.maxed()) {
-                g.setColor(new Color(150, 150, 158));
-                g.drawString("Fully upgraded", (float) dx, (float) (py + 350));
-            } else {
-                g.setColor(gold);
-                g.drawString("Cost: " + u.cost() + " skill point" + (u.cost() == 1 ? "" : "s"), (float) dx, (float) (py + 350));
-                boolean affordable = p.skillPoints >= u.cost();
-                g.setColor(affordable ? new Color(120, 230, 130) : new Color(220, 110, 110));
-                g.drawString(affordable ? "Press ENTER to buy" : "Not enough skill points", (float) dx, (float) (py + 380));
-            }
-        }
-
-        if (!w.stationMessage.isEmpty()) {
-            g.setFont(f18b);
-            centered(g, w.stationMessage, px + pw / 2, py + ph - 56, gold);
-        }
-        g.setFont(f14);
-        centered(g, "W / S  choose      ENTER  buy      ESC  leave", px + pw / 2, py + ph - 24, new Color(190, 190, 200));
-    }
-
     // ------------------------------------------------------------------ text helpers
 
     private void centered(Graphics2D g, String s, double cx, double baseline, Color c) {
@@ -551,19 +458,4 @@ final class Renderer {
         g.drawString(s, (float) (rightX - fm.stringWidth(s)), (float) baseline);
     }
 
-    private void wrapped(Graphics2D g, String text, double x, double y, double maxWidth, double lineHeight) {
-        FontMetrics fm = g.getFontMetrics();
-        StringBuilder line = new StringBuilder();
-        for (String word : text.split(" ")) {
-            String test = line.isEmpty() ? word : line + " " + word;
-            if (fm.stringWidth(test) > maxWidth && !line.isEmpty()) {
-                g.drawString(line.toString(), (float) x, (float) y);
-                y += lineHeight;
-                line = new StringBuilder(word);
-            } else {
-                line = new StringBuilder(test);
-            }
-        }
-        if (!line.isEmpty()) g.drawString(line.toString(), (float) x, (float) y);
-    }
 }
