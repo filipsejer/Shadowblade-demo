@@ -698,6 +698,55 @@ final class SfxSynth {
                 x.reverb(0.2, 0.5, 0.06);
                 return x;
             }
+            // ------------------------------------------------------------ roguelike runs
+            case XP_PICKUP -> {                                                  // a tiny glassy tick; E, G or A, and the game nudges the pitch per gem size
+                int[] notes = {88, 91, 93};
+                Sx x = new Sx(0.14, seed);
+                x.tone(SINE, 0, 0.12, n(notes[v % 3]), n(notes[v % 3]), 1, 0.001, 0.035).tone(SINE, 0, 0.08, n(notes[v % 3] + 12), n(notes[v % 3] + 12), 0.25, 0.001, 0.02);
+                return x;
+            }
+            case COIN_PICKUP -> {                                                // two quick bright chimes: E then A
+                Sx x = new Sx(0.4, seed);
+                x.bell(0, n(88), new double[]{1, 2.76, 5.4}, new double[]{1, 0.4, 0.15}, 0.08, 0.8).bell(0.06, n(93), new double[]{1, 2.76, 5.4}, new double[]{1, 0.4, 0.15}, 0.12, 0.9);
+                x.reverb(0.3, 0.5, 0.12);
+                return x;
+            }
+            case CHEST_OPEN -> {                                                 // a creaking lid, a thump, and a shower of sparkles rising C E G C
+                Sx x = new Sx(2.0, seed);
+                x.noise(BAND, 0, 0.3, 500, 1400, 1.4, 0.5, 0.05, 0.12).tone(SINE, 0.25, 0.3, 130, 60, 0.8, 0.002, 0.1);
+                int[] up = {72, 76, 79, 84, 88, 91};
+                for (int i = 0; i < up.length; i++) x.fm(0.3 + 0.07 * i, 1.2, n(up[i]), 3.5, 1.3, 0.55, 0.35);
+                x.noise(HIGH, 0.3, 1.0, 7000, 9000, 0.7, 0.12, 0.05, 0.4);
+                x.reverb(0.6, 0.45, 0.3);
+                return x;
+            }
+            case POWERUP -> {                                                    // a quick upward sweep landing on a bright G
+                Sx x = new Sx(0.9, seed);
+                x.tone(SINE, 0, 0.25, n(67), n(91), 0.7, 0.01, 0.12).fm(0.18, 0.6, n(91), 3.5, 1.2, 0.7, 0.25).fm(0.18, 0.6, n(79), 2, 1.0, 0.4, 0.25);
+                x.reverb(0.45, 0.5, 0.2);
+                return x;
+            }
+            case THUNDER_NEAR -> {                                               // the crack of a strike right here, and the rumble after it
+                Sx x = new Sx(3.2, seed);
+                x.noise(HIGH, 0, 0.12, 6000, 2500, 0.7, 1.0, 0.0005, 0.03).noise(BAND, 0, 0.25, 2400 * k, 900, 0.9, 1.2, 0.0005, 0.06)
+                    .crackle(0, 0.35, 40, 5200, 0.7).tone(SINE, 0, 0.6, 90, 34, 0.7, 0.002, 0.25)
+                    .noise(LOW, 0.05, 3.0, 900, 110, 0.8, 1.5, 0.04, 0.9).am(0.2, 3.0, 7 * k, 0.45);
+                x.reverb(0.8, 0.5, 0.35);
+                return x;
+            }
+            case ROBOT_TALK -> {                                                 // a robot's syllable: a bright little two-tone chirp
+                int[] notes = {79, 84, 81, 86};
+                double f = n(notes[v % 4]);
+                Sx x = new Sx(0.12, seed);
+                x.tone(SQUARE, 0, 0.045, f, f, 0.6, 0.002, 0.03).tone(SQUARE, 0.045, 0.05, f * 1.12, f * 1.12, 0.5, 0.002, 0.03).lowpass(3200);
+                return x;
+            }
+            case THUNDER_FAR -> {                                                // a long roll of thunder, far off over the sea
+                Sx x = new Sx(4.5, seed);
+                x.noise(LOW, 0, 4.2, 420 * k, 90, 0.8, 1.0, 0.35, 1.3).am(0, 4.2, 4.5 * k, 0.55).noise(LOW, 0.6 * k, 2.5, 260, 80, 0.8, 0.7, 0.2, 0.9);
+                x.reverb(0.85, 0.6, 0.4);
+                return x;
+            }
             case CITY_HORN -> {
                 Sx x = new Sx(2.2, seed);
                 double f = v == 0 ? 220 : 196;

@@ -84,11 +84,6 @@ final class AudioEngine {
 
     // ================================================================== game-thread API
 
-    /** Installs the painted sound effects (called once the bank is ready). */
-    void setBank(SfxBank bank) { this.bank = bank; }
-
-    boolean hasBank() { return bank != null; }
-
     void setVolumes(double master, double music, double sfx, double ambience, boolean muted) {
         this.master = (float) Dsp.clamp(master, 0, 1);
         this.musicVolume = (float) Dsp.clamp(music, 0, 1);
@@ -127,7 +122,12 @@ final class AudioEngine {
         }, false);
     }
 
-    /** Sets the background bed: 0 none, 1 forest wind and birds, 2 city hum and traffic; {@code level} 0..1. */
+    /** Fades the music out without losing its place (true), or back in from where it stopped (false). */
+    void setMusicHushed(boolean hushed) {
+        enqueue(() -> music.setHushed(hushed), false);
+    }
+
+    /** Sets the background bed: 0 none, 1 forest wind and birds, 2 city hum and traffic, 3 Stormcliff's rain and sea; {@code level} 0..1. */
     void setAmbience(int bed, double level) {
         enqueue(() -> ambience.set(bed, level), false);
     }
@@ -137,9 +137,6 @@ final class AudioEngine {
         pending.incrementAndGet();
         commands.add(r);
     }
-
-    /** Requests waiting for the audio thread (for tests). */
-    int pendingCommands() { return pending.get(); }
 
     String status() { return status; }
 
@@ -367,22 +364,24 @@ final class AudioEngine {
 
     Music music() { return music; }
 
-    int voicesPlaying() { return playing.size(); }
 
     // ================================================================== ambience
 
     /**
      * The background bed under everything. Forest: wind that breathes in and out, and now and then a bird. City: the low
-     * hum of a big place at night and traffic swelling in the distance, and a far-off horn once in a while. It is made
-     * live from filtered noise, so it never loops.
+     * hum of a big place at night and traffic swelling in the distance, and a far-off horn once in a while. Stormcliff:
+     * rain hissing on stone, heavy drops pattering close by, the sea breaking far below in slow swells, and now and then
+     * a beep from one of the laboratory's machines. It is made live from filtered noise, so it never loops.
      */
     private static final class Ambience {
-        private int bed;                       // 0 none, 1 forest, 2 city
+        private int bed;                       // 0 none, 1 forest, 2 city, 3 Stormcliff
         private double level = 1;
         private double forest, city, lab;      // current bed volumes (fade)
         private final Dsp.Noise noise = new Dsp.Noise(77);
-        private final Dsp.Biquad windBand = new Dsp.Biquad(), windHiss = new Dsp.Biquad(), trafficBand = new Dsp.Biquad(), ventBand = new Dsp.Biquad();
-        private final Dsp.OnePole rumble = new Dsp.OnePole(140);
+        private final Dsp.Biquad windBand = new Dsp.Biquad(), windHiss = new Dsp.Biquad(), trafficBand = new Dsp.Biquad(),
+            rainL = new Dsp.Biquad(), rainR = new Dsp.Biquad(), dropBand = new Dsp.Biquad();
+        private final Dsp.OnePole rumble = new Dsp.OnePole(140), surf = new Dsp.OnePole(220);
+        private double dropL, dropR;           // the patter of the nearest drops, each a little burst that dies away
         private double t, lfoA, lfoB, nextEvent = 3 * Dsp.SR;
         private long samples;
 
@@ -420,13 +419,23 @@ final class AudioEngine {
                     left += v;
                     right += v;
                 }
-                if (lab > 0.0005) {                                   // the laboratory: fluorescent hum and the breath of the ventilation
-                    if ((samples & 63) == 0) ventBand.bandpass(650 + 500 * lfoA, 0.9);
-                    double hum = Math.sin(Dsp.TWO_PI * 100 * t) * 0.5 + Math.sin(Dsp.TWO_PI * 200.4 * t) * 0.2 + Math.sin(Dsp.TWO_PI * 300.2 * t) * 0.07;
-                    float vent = ventBand.process(w) * (float) (0.4 + 0.6 * lfoB);
-                    float v = (float) (hum * (0.007 + 0.002 * lfoA) + vent * 0.03) * (float) lab;
-                    left += v;
-                    right += v;
+                if (lab > 0.0005) {                                   // Stormcliff: rain on stone, drops close by, the sea below
+                    if ((samples & 63) == 0) {
+                        rainL.bandpass(3800 + 900 * lfoB, 0.5);
+                        rainR.bandpass(4300 + 900 * lfoA, 0.5);
+                        dropBand.bandpass(2200, 1.2);
+                    }
+                    float w2 = noise.next();
+                    double gust = 0.6 + 0.4 * lfoA;                 // the rain comes in gusts
+                    double swell = 0.5 + 0.5 * Math.sin(Dsp.TWO_PI * 0.09 * t + 0.7 * Math.sin(Dsp.TWO_PI * 0.023 * t));
+                    float sea = surf.process(w) * (float) (0.06 * (0.25 + 0.75 * swell * swell));
+                    if (noise.uniform() < 0.0009) dropL = 0.5 + 0.5 * noise.uniform();
+                    if (noise.uniform() < 0.0009) dropR = 0.5 + 0.5 * noise.uniform();
+                    dropL *= 0.993;
+                    dropR *= 0.993;
+                    float patter = dropBand.process(w2);
+                    left += (float) ((rainL.process(w) * 0.013 * gust + sea + patter * dropL * 0.025) * lab);
+                    right += (float) ((rainR.process(w2) * 0.013 * gust + sea + patter * dropR * 0.025) * lab);
                 }
                 l[i] += left;
                 r[i] += right;
@@ -436,8 +445,8 @@ final class AudioEngine {
             if (nextEvent <= 0) {
                 if (bed == 1 && forest > 0.3) engine.startNow(Snd.BIRD, 0.6 + 0.4 * level, noise.range(-0.8, 0.8));
                 if (bed == 2 && city > 0.3) engine.startNow(Snd.CITY_HORN, 0.7, noise.range(-0.7, 0.7));
-                if (bed == 3 && lab > 0.3) engine.startNow(noise.uniform() < 0.6 ? Snd.LAB_BEEP : Snd.LAB_BUBBLE, 0.7, noise.range(-0.8, 0.8));
-                nextEvent = (bed == 2 ? noise.range(22, 55) : bed == 3 ? noise.range(5, 14) : noise.range(4, 12)) * Dsp.SR;
+                if (bed == 3 && lab > 0.3) engine.startNow(noise.uniform() < 0.7 ? Snd.LAB_BEEP : Snd.LAB_BUBBLE, 0.5, noise.range(-0.8, 0.8));
+                nextEvent = (bed == 2 ? noise.range(22, 55) : bed == 3 ? noise.range(12, 30) : noise.range(4, 12)) * Dsp.SR;
             }
         }
     }

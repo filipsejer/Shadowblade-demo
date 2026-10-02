@@ -26,11 +26,4 @@ final class SfxBank {
     }
 
     int variants(Snd s) { return data[s.ordinal()].length; }
-
-    /** Total memory in megabytes (for the report). */
-    double megabytes() {
-        long n = 0;
-        for (float[][] v : data) for (float[] a : v) n += a.length;
-        return n * 4 / 1e6;
-    }
 }

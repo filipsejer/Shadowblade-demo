@@ -3,7 +3,7 @@ package game;
 /**
  * A flask bomb the mad scientist lobs: a marked spot on the floor that, after {@code delay} seconds, bursts and hurts anyone
  * standing in it. Rolling through it (or just being elsewhere) is safe. Once burst it lingers for a moment so the flash can
- * be drawn.
+ * be drawn. A {@link #lightning} strike (Stormcliff's storm) works the same way, but hits monsters standing in it too.
  */
 final class Blast {
     static final double LINGER = 0.35;
@@ -12,6 +12,10 @@ final class Blast {
     double delay;               // seconds until it bursts
     double after = LINGER;      // seconds left to be drawn once burst
     boolean burst;
+    /** The storm's: struck from the sky, and it hurts monsters as well as you. */
+    boolean lightning;
+    /** Lightning: the bolt's jagged path, from the sky to the ground (set when it strikes). */
+    double[] boltX, boltY;
 
     Blast(double x, double y, double radius, double delay, double damage) {
         this.x = x;
@@ -21,4 +25,14 @@ final class Blast {
         this.total = delay;
         this.damage = damage;
     }
+
+    /** A lightning strike at (x, y) in {@code delay} seconds, hurting you {@code damage} if you're in it. */
+    static Blast lightning(double x, double y, double delay, double damage) {
+        Blast b = new Blast(x, y, RADIUS, delay, damage);
+        b.lightning = true;
+        return b;
+    }
+
+    /** How wide a lightning strike is. */
+    static final double RADIUS = 95;
 }

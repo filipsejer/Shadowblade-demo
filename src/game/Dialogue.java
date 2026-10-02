@@ -58,6 +58,9 @@ final class Dialogue {
 
     Line current() { return line; }
 
+    /** True when the line on screen waits for a key, is written out, and nothing comes after it. */
+    boolean onLastLine() { return line != null && line.waits() && written() && queue.isEmpty(); }
+
     /** The part of the current line written so far. */
     String visible() { return line == null ? "" : line.text().substring(0, Math.min(line.text().length(), (int) shown)); }
 

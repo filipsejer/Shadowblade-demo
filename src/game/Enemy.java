@@ -15,7 +15,9 @@ final class Enemy {
         SHOOTER(13, 24, 70, 9, 12, 0.55, 0.0, new Color(210, 44, 120), false, false),
         SHADE(15, 35, 115, 10, 16, 0.4, 0.0, new Color(150, 40, 120), false, true),
         BRUTE(26, 130, 62, 20, 30, 0.65, 0.6, new Color(150, 22, 22), false, false),
-        BOSS(46, 800, 75, 22, 250, 0.85, 0.95, new Color(110, 10, 40), true, false);
+        BOSS(46, 800, 75, 22, 250, 0.85, 0.95, new Color(110, 10, 40), true, false),
+        /** A Blight nest: rooted to the spot, it doesn't fight back itself; {@link Run} has it spit out guards. */
+        NEST(34, 900, 0, 0, 40, 0, 1.0, new Color(200, 70, 240), true, false);
 
         final double radius, hp, speed, damage, windup, resist;
         final int xp;
@@ -80,11 +82,12 @@ final class Enemy {
     double chargeDx, chargeDy;  // direction locked in the moment he launches
     boolean chargeHit;          // whether this charge has already landed its hit
     boolean summoned;           // a creation of the boss: worth no XP, and it falls apart when he does
-    boolean noXp;               // worth no XP (the tutorial's enemy)
-    boolean shellOnHit;         // the tutorial's enemy: the first sword hit makes it curl into a thorny shell
-    boolean shelled;            // ...which it only does once
-    boolean shielded;           // curled up in the shell: swords bounce off it, magic breaks it open
-    int swordHits, magicHits;   // blows that landed, by kind (the tutorial counts them)
+    boolean elite;              // a fight's elite: much tougher, gold-tinted, drops a treasure chest
+    boolean specimen;           // one of Morrow's escaped specimens (a hunt's goal): dormant until woken, it bolts when hurt
+    int molts;                  // a specimen: how many times it has shed monsters and bolted
+    double flee;                // a specimen bolting: seconds left running away
+    boolean forWard;            // going for what you protect (Copper, the engine) instead of you, until you hit it
+    double orbitCd;             // a run's orbit blades: time until they may cut this one again
     double shootTimer;
     double strafeDir;
 
@@ -118,6 +121,15 @@ final class Enemy {
         }
     }
 
+    /** A nest: never moves, never attacks. */
+    boolean rooted() { return type == Type.NEST; }
+
+    /** Too big to be wiped out by a bomb, a relay's pulse or a lightning strike: the boss, nests, elites and specimens. */
+    boolean tough() { return type == Type.BOSS || rooted() || elite || specimen; }
+
+    /** A nest that has noticed you (it sends its first guards at once). */
+    boolean awake;
+
     /** In shadow mode: can't attack, can't be attacked, can't be pushed around. */
     boolean intangible() { return type.shadowy && shadow; }
 
@@ -132,28 +144,29 @@ final class Enemy {
      * {@link Type#resist}) go up less; armored enemies (the boss) not at all — juggling him would trivialise the fight.
      */
     void launch(double vz0) {
-        if (type.armored) return;
+        if (type.armored || elite || specimen) return;
         vz = Math.max(vz, vz0 * (1 - type.resist));
     }
 
     /** A sword blow. */
     void hurt(World w, double dmg, double kbx, double kby, double stunTime) {
-        damage(w, dmg, kbx, kby, stunTime, Color.WHITE, false);
+        damage(w, dmg, kbx, kby, stunTime, Color.WHITE, false, false);
     }
 
     /** Magic (a spell or its burning): the colour is the damage number's. */
     void hurt(World w, double dmg, double kbx, double kby, double stunTime, Color textColor) {
-        damage(w, dmg, kbx, kby, stunTime, textColor, true);
+        damage(w, dmg, kbx, kby, stunTime, textColor, true, false);
     }
 
-    private void damage(World w, double dmg, double kbx, double kby, double stunTime, Color textColor, boolean magic) {
+    /** Any blow, saying whether it's magic and whether it was a critical hit (a bigger number). */
+    void hurt(World w, double dmg, double kbx, double kby, double stunTime, Color textColor, boolean magic, boolean crit) {
+        damage(w, dmg, kbx, kby, stunTime, textColor, magic, crit);
+    }
+
+    private void damage(World w, double dmg, double kbx, double kby, double stunTime, Color textColor, boolean magic, boolean crit) {
         if (hp <= 0 || intangible() || stageTimer > 0) return;        // nothing touches a shade in shadow mode, or a boss changing stage
-        if (shielded) {
-            if (!magic) { bounce(w); return; }                          // swords glance off the shell...
-            breakShell(w);                                              // ...but magic cracks it open, and goes on to hurt what is inside
-        }
-        if (magic) magicHits++; else swordHits++;
         hp -= dmg;
+        forWard = false;                                              // hit it, and it turns on you
         flash = 0.1;
         double k = 1 - type.resist;
         kx += kbx * k;
@@ -166,39 +179,7 @@ final class Enemy {
             if (state == State.WINDUP) interrupt();
         }
         w.effects.add(Effect.text(x + (w.rng.nextDouble() - 0.5) * 14, y - radius - 6 - z,
-            String.valueOf(Math.max(1, (int) Math.round(dmg))), textColor, false));
-        if (shellOnHit && !shelled && !magic && hp > 0) curlUp(w);
-    }
-
-    /** The tutorial's enemy rolls itself into a ball of thorns after its first sword hit: it stops fighting, and only magic gets through. */
-    private void curlUp(World w) {
-        shelled = shielded = true;
-        stun = 1e6;
-        state = State.CHASE;
-        w.soundAt(Snd.SHELL_CURL, x, y);
-        w.effects.add(Effect.ring(x, y, radius, radius * 2.6, 0.4, new Color(120, 220, 110), false));
-        w.effects.add(Effect.text(x, y - radius - 26, "It curled up!", new Color(170, 240, 140), true));
-    }
-
-    /** A sword hit on the shell: a clink and a spark, no damage. */
-    void bounce(World w) {
-        flash = 0.06;
-        w.soundAt(Snd.SHELL_CLINK, x, y);
-        w.effects.add(Effect.particle(x, y - radius * 0.3, 0, 0, 0.24, "fx.spark", -1, 1, 0, 3));
-        w.effects.add(Effect.text(x + (w.rng.nextDouble() - 0.5) * 14, y - radius - 6, "Blocked!", new Color(200, 210, 200), false));
-        w.shake = Math.max(w.shake, 2);
-    }
-
-    private void breakShell(World w) {
-        shielded = false;
-        stun = 0.5;
-        w.soundAt(Snd.SHELL_BREAK, x, y);
-        w.effects.add(Effect.ring(x, y, radius, radius * 3.2, 0.35, new Color(190, 255, 160), true));
-        for (int i = 0; i < 10; i++) {
-            double a = w.rng.nextDouble() * Math.PI * 2, sp = 90 + w.rng.nextDouble() * 170;
-            w.effects.add(Effect.particle(x, y - radius * 0.4, Math.cos(a) * sp, Math.sin(a) * sp - 60, 0.7 + w.rng.nextDouble() * 0.4, "fx.leaf", w.rng.nextInt(3), 0.06, -70, 3));
-        }
-        w.effects.add(Effect.text(x, y - radius - 26, "Shell broken!", new Color(255, 230, 120), true));
+            String.valueOf(Math.max(1, (int) Math.round(dmg))), textColor, crit));
     }
 
     /**
@@ -275,20 +256,46 @@ final class Enemy {
         if (slowTimer > 0) slowTimer -= dt;
 
         if (spawnIn > 0) { spawnIn -= dt; return; }
+        if (rooted()) { kx = ky = 0; return; }                    // a nest just sits there (Run sends its guards)
+        if (specimen && !awake) { kx = ky = 0; return; }          // a specimen sleeps until something comes near
         if (type.shadowy) updateShadow(w, dt);
         if (stun > 0) { stun -= dt; return; }
 
         if (!airborne()) {                                        // up in the air: no AI, just falling and drifting on whatever knockback it has left
             Player p = w.player;
-            double dx = p.x - x, dy = p.y - y;
+            Ward ward = forWard && w.run != null && w.run.ward != null && w.run.ward.targetable() ? w.run.ward : null;
+            if (forWard && ward == null) forWard = false;
+            double tx = ward != null ? ward.x : p.x, ty = ward != null ? ward.y : p.y;
+            double dx = tx - x, dy = ty - y;
             double dist = Math.max(0.001, Math.hypot(dx, dy));
             double ux = dx / dist, uy = dy / dist;
-            if (Math.abs(dx) > 3) faceLeft = dx < 0;                 // look toward the player
+            if (flee > 0) {                                       // a specimen bolting: straight away from you, fast
+                flee -= dt;
+                x -= ux * type.speed * 2.6 * dt;
+                y -= uy * type.speed * 2.6 * dt;
+                faceLeft = ux > 0;
+                Util.Vec inside = w.level.clamp(x, y, radius);
+                x = inside.x();
+                y = inside.y();
+                return;
+            }
+            PathField field = ward != null ? w.wardPaths : w.paths;
+            Util.Vec way = field != null ? field.direction(x, y, radius, tx, ty) : null;   // around the walls if they're in the way
+            if (way != null) {
+                boolean detour = way.x() * ux + way.y() * uy < 0.3;       // heading off sideways or back to get round something
+                ux = way.x();
+                uy = way.y();
+                if (detour && Math.abs(ux) > 0.2) faceLeft = ux < 0;      // look where it's going
+                else if (Math.abs(dx) > 3) faceLeft = dx < 0;
+            } else if (Math.abs(dx) > 3) {
+                faceLeft = dx < 0;                                     // look toward the player
+            }
             double speed = type.speed * (slowTimer > 0 ? slowMul : 1) * (intangible() ? 1.2 : 1);
 
+            // (ux, uy) is the way to walk to reach the player; dist is still the straight-line distance to them
             if (type == Type.BOSS) updateBoss(w, dt, p, ux, uy, dist, speed);
             else if (type == Type.SHOOTER) updateShooter(w, dt, ux, uy, dist, speed);
-            else updateMelee(w, dt, p, ux, uy, dist, speed);
+            else updateMelee(w, dt, p, ward, ux, uy, dist, speed);
         }
 
         Util.Vec inside = w.level.clamp(x, y, radius);
@@ -309,12 +316,14 @@ final class Enemy {
         }
     }
 
-    private void updateMelee(World w, double dt, Player p, double ux, double uy, double dist, double speed) {
+    /** Walks at its target (you, or the ward it's after), winds up when close, and strikes. */
+    private void updateMelee(World w, double dt, Player p, Ward ward, double ux, double uy, double dist, double speed) {
+        double reach = ward != null ? ward.radius : p.radius;
         switch (state) {
             case CHASE -> {
                 x += ux * speed * dt;
                 y += uy * speed * dt;
-                if (dist - radius - p.radius < 12 && !intangible()) {
+                if (dist - radius - reach < 12 && !intangible()) {
                     state = State.WINDUP;
                     stateTimer = windupTotal = type.windup;
                     windupSound(w);
@@ -324,7 +333,8 @@ final class Enemy {
                 stateTimer -= dt;
                 if (stateTimer <= 0) {
                     w.soundAt(Snd.ENEMY_STRIKE, x, y);
-                    if (dist - radius - p.radius < strikeReach()) p.hurt(w, damage, x, y);
+                    if (ward != null) { if (dist - radius - reach < strikeReach() && ward.targetable()) w.run.hitWard(w, damage); }
+                    else if (dist - radius - p.radius < strikeReach()) p.hurt(w, damage, x, y);
                     state = State.RECOVER;
                     stateTimer = 0.6;
                 }

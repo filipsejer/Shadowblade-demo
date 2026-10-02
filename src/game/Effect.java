@@ -112,8 +112,9 @@ final class Effect {
     static Effect ghost(double x, double y, double angle, Color c) {
         Effect e = new Effect(Kind.GHOST, x, y, 0.24, c);
         e.angle = angle;
-        e.frames = Art.frames("hero." + PeopleArt.heroDir(angle) + ".walk");
-        e.flip = PeopleArt.heroFlip(angle);
+        String dir = PeopleArt.heroDir(angle);
+        e.frames = Art.frames("hero." + dir + ".walk");
+        e.flip = dir.equals("side") && PeopleArt.heroFlip(angle);       // only the side view is mirrored, as on the hero
         return e;
     }
 

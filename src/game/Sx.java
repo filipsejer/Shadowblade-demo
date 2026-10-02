@@ -174,13 +174,6 @@ final class Sx {
         return this;
     }
 
-    /** Soft saturation: warms and crunches. */
-    Sx drive(double amount) {
-        double norm = Math.tanh(amount);
-        for (int i = 0; i < d.length; i++) d[i] = (float) (Math.tanh(d[i] * amount) / norm);
-        return this;
-    }
-
     /** Reverb, mixed to mono. {@code wet} is how much tail to add. */
     Sx reverb(double room, double damping, double wet) {
         Dsp.Reverb rv = new Dsp.Reverb(room, damping);
@@ -266,21 +259,6 @@ final class Sx {
             peak = Math.max(peak, Math.abs(d[i]));
         }
         double g = Math.min(Dsp.lin(loudDb - loudness(d)), Dsp.lin(peakCapDb) / peak);
-        for (int i = 0; i < d.length; i++) d[i] *= (float) g;
-        return this;
-    }
-
-    /** Removes DC offset, then scales so the loudest sample sits at {@code peakDb} dBFS. */
-    Sx normalize(double peakDb) {
-        double mean = 0;
-        for (float v : d) mean += v;
-        mean /= d.length;
-        double peak = 1e-9;
-        for (int i = 0; i < d.length; i++) {
-            d[i] -= (float) mean;
-            peak = Math.max(peak, Math.abs(d[i]));
-        }
-        double g = Dsp.lin(peakDb) / peak;
         for (int i = 0; i < d.length; i++) d[i] *= (float) g;
         return this;
     }

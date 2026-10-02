@@ -4,8 +4,9 @@ import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * The sprite atlas. Every sprite in the game is painted in code (see {@link PeopleArt}, {@link CreatureArt},
- * {@link FxArt}) and registered here by name as a list of animation frames, e.g. {@code "hero.side.walk"}.
+ * The sprite atlas. Sprites are painted in code (see {@link PeopleArt}, {@link CreatureArt}, {@link FxArt}) or loaded
+ * from drawn images ({@link ImportedArt}, which replaces painted ones of the same name), and registered here by name as
+ * a list of animation frames, e.g. {@code "hero.side.walk"}.
  */
 final class Art {
     private Art() {}
@@ -17,11 +18,16 @@ final class Art {
 
     static {
         PeopleArt.register(SPRITES);
-        SquirrelArt.register(SPRITES);
         BreakableArt.register(SPRITES);
         CreatureArt.register(SPRITES);
         FxArt.register(SPRITES);
         TownArt.register(SPRITES);
+        CityArt.register(SPRITES);
+        CityFolk.register(SPRITES);
+        LabArt.register(SPRITES);
+        LabFolk.register(SPRITES);
+        RunArt.register(SPRITES);
+        ImportedArt.register(SPRITES);      // the drawn art, over the painted sprites it replaces
     }
 
     static boolean has(String name) { return SPRITES.containsKey(name); }
