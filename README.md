@@ -10,10 +10,11 @@ A top-down action adventure in plain Java (Swing / Java2D), with no dependencies
   the monsters tougher the longer you take, caches to buy with the gold you pick up, and loops that make a cleared
   challenge harder (and better paid) every time you go back.
 
-Chapter 1 is **The Whispering Forest**; chapter 2 is **Lumen, the City of Lamps**, down the road south. The monsters,
+Chapter 1 is **The Whispering Forest**; chapter 2 is **Lumen, the City of Lamps**, down the road south; chapter 3 is
+**Stormcliff**, Doctor Morrow's laboratory up the coast road, in a storm that never ends. The monsters,
 bosses, the forest's trees and rocks, the nests, the crates and the chests are drawn pixel art made with
 [PixelLab](https://pixellab.ai) (the PNGs in `res/art`); everything else is pixel art painted by code at startup (see
-**Graphics engine**), the forest's and the city's ground and scenery painted to match the drawn art. All the music and sound effects are synthesised by code
+**Graphics engine**), the forest's, the city's and Stormcliff's ground and scenery painted to match the drawn art. All the music and sound effects are synthesised by code
 (there are no audio files; see **Sound engine**).
 
 ## Just want to play it?
@@ -119,11 +120,33 @@ A night-time city (`Worlds.city`), its lamps flickering:
   city's merchant: the same table as Bramble's), **Pip** the newsboy (hints) and **Old Gus** the rat-catcher (a side job).
 - **Chests:** six, including a spark of starlight worth a skill point in Clocktower Court.
 
+### Stormcliff (chapter 3)
+
+Doctor Morrow's laboratory (`Worlds.lab`), bolted onto the sea cliffs: rain driving across the screen, lightning
+lighting everything up every so often (thunder rolling in after it), and the sea breaking far below. The coast road,
+east of Lumen's Market Row, opens once chapter 2 is done.
+
+```
+                          [ OBSERVATORY LIFT ]          (the gate to the Observatory)
+                                   |
+   [ THE GREENHOUSE ] ------ [  THE ATRIUM  ] ------ [ EAST WING DOORS ]   (the gates to the greenhouse and the east wing)
+                                   |
+   [ LIGHTNING GARDEN ] -- [ THE GATEHOUSE ] -- [ THE SEA WALL ]
+                                   |
+                            [ THE CLIFF ROAD ]          (the road back to Lumen)
+```
+
+- **People:** **Doctor Ilse**, Morrow's old assistant (the story), **Copper** her surveyor robot (who you escort),
+  **Fern** who keeps the greenhouse (a side job), **Brass** the sparring automaton (the trainer) and **Quill** the
+  archivist (the merchant). The robots talk in beeps.
+- **Chests:** five, including a sliver of starlight worth a skill point by the lift, and the grandest one lashed to
+  the sea wall.
+
 ### The story so far (Chapter 1)
 
 The stars fell, and three nights later a sickness crept out of the Hollow north of Mossbrook: the **Blight**. Thorns
 that walk, flowers that bite, growing from nests. Elder Rowan asks you to go into the Hollow and tear the nests out.
-Clear it and the camp thanks you with a gift (an epic ring, gold and skill points) and a warning: the Blight didn't
+Clear it and the camp thanks you with a gift (an uncommon ring, gold and skill points) and a warning: the Blight didn't
 start in the forest. The road south leads to the city.
 
 ### Chapter 2
@@ -135,6 +158,16 @@ tower's door will open. Bring the Warden down and the Watch gives you the **Lume
 first gift you'll see in the hero's hand), gold and skill points. Then Juno shows you what she found in the Warden's
 core: new orders, *GUARD THE GARDEN*, in the hand of **Doctor Morrow**, who ran the Dynamo before her and left for a
 laboratory on the cliffs. Someone is gathering the fallen stars, and planting them. The story continues there.
+
+### Chapter 3
+
+At Stormcliff, **Doctor Ilse** tells you the truth of it: Morrow didn't make the stars fall, but he's been collecting
+the pieces and planting them, and the Blight is what grows. He's shut himself in the **Observatory** with the biggest
+star of all. Its lift is dead, its power cut off in the overgrown East Wing, so you see **Copper** through it to
+rewire the junction. Then Ilse's **stasis engine** has to be kept standing beside the star until it's charged enough
+to freeze it, and then there's Morrow himself, in two stages. Beaten, he says he never made the stars fall: he only
+caught them. Something up there is still throwing them down. Ilse gives you **Morrow's Goggles** (an epic helm), gold
+and skill points.
 
 ## Challenges
 
@@ -149,6 +182,9 @@ waiting: how many nests, whether there's a guardian, the danger at the start, an
 | **The Back Alleys** | Old Gus | 3 | none | Easy | 110 gold, 3 skill points | 60 gold, 1 skill point |
 | **The Substation** | Tinker Juno | 3 relays | none | Medium | 220 gold, 5 skill points | 90 gold, 1 skill point |
 | **The Dynamo Tower** | Captain Vell | 5 | the Warden | Medium | 300 gold, 6 skill points | 110 gold, 1 skill point |
+| **The Overgrown Greenhouse** | Fern | 4 specimens | none | Medium | 260 gold, 4 skill points | 110 gold, 1 skill point |
+| **The East Wing** | Doctor Ilse | escort Copper (3 walls of vines) | none | Medium | 360 gold, 6 skill points | 130 gold, 1 skill point |
+| **The Observatory** | Doctor Ilse | keep the stasis engine standing | Doctor Morrow | Hard | 460 gold, 8 skill points | 150 gold, 2 skill points |
 
 **Relays** (`Relay`, the substation's goal) are the other kind of fight, Risk of Rain's teleporter three times over.
 Walk up to a relay and press **E** to switch it on; it powers up (32 seconds) only while you stand inside its circle,
@@ -156,6 +192,25 @@ and only one can power up at a time. The horde comes thicker and faster out of t
 quarter, a half (an elite) and three quarters, but the Blight hates the light: while you hold the circle, whatever
 comes into it is slowed and scorched. Fully powered, a relay lights up for good and its pulse flattens the ordinary
 monsters round it. A bar on the HUD shows how far it's got, and shouts when you've been pushed out.
+
+Stormcliff's three fights each have a goal of their own:
+
+- **Hunt** (the greenhouse): four of Morrow's **specimens**, huge glowing mutants, sleep in the far corners of the map
+  until something comes near. Awake, they fight; at every quarter of their health lost they shriek, shed a pack of
+  oozes and wind-up mice, and bolt. Arrows and the map show where they are.
+- **Escort** (the east wing): **Copper** rolls along a route across the whole map (dashed on the ground ahead of him,
+  and on the map), but only while you're beside him. Three times he stops at a wall of the Blight's vines and cuts
+  through it for a few seconds while the horde surges in. Some of the horde goes for him instead of you (until you hit
+  them); knocked down, he isn't lost, but he won't move until you stand by him for a few seconds, and the danger clock
+  keeps ticking.
+- **Defend** (the observatory): Ilse's **stasis engine** stands in the middle of the map and charges by itself (just
+  under two minutes), its cold slowing whatever comes near. Surges come at each third. Knocked down, it loses some
+  charge and stops until you restart it by standing next to it. Fully charged, it freezes everything near it, and
+  **Doctor Morrow** arrives: the chapter's last stand, far tougher than the other guardians, in two stages.
+
+All of Stormcliff's fights have **lightning** too: every few seconds the storm marks spots round you (one close by),
+and a moment later strikes them. Standing in one hurts; any ordinary monster standing in one is flattened, so it's
+worth luring them in. The storm never strikes what you're protecting.
 
 Challenges can be fought again. Each clear is a **loop**: the next attempt starts more dangerous
 (`Challenge.LOOP_DANGER`), its guardian is tougher, and it pays a little more.
@@ -228,12 +283,21 @@ Items come from chests (the world's, elites', the guardian's, and caches), from 
 - **Six slots:** weapon, helm, armor, gloves, boots, ring. Each slot has a main stat (melee damage, skill damage, max HP,
   attack speed, move speed, crit chance) plus more random lines — damage taken, regeneration, pickup range, XP gain,
   skill cooldowns, gold found.
-- **Rarity:** Common, Uncommon, Rare, Epic, Legendary — more stat lines and bigger numbers. Each **Legendary** also has
+- **Rarity:** Common, Uncommon, Rare, Epic, Legendary — one, two, three, four and four stat lines, each rarity's
+  numbers bigger than the last. Rolls only stray 10% either side of the middle, so of two items from fights of the same
+  difficulty (and upgraded as far), the rarer is always the stronger. Items from harder fights (the Substation and the
+  Tower, or a fight cleared before) are 25% stronger per step.
+- **Rarity by world:** the forest only gives commons and uncommons. The city gives mostly uncommons and rares, epics now
+  and then (more from a guardian), and its guardian the odd legendary. Clearing a fight again tilts its drops further
+  toward the top. Bramble's and Nix's table follows the world of the last fight won. Each **Legendary** also has
   a power of its own: *Dawnbreaker* (fights start with Crescent Wave), *Crown of Insight* (+2 rerolls), *Phoenix Mail*
   (revive once per fight), *Tempest Gauntlets* (start with a 3-hit combo), *Windwalkers* (start with the roll), *Ring of
   Fortune* (4 cards per level-up).
 - **The Armory** (**Equipment** on the pause menu, out in the world): **Enter** equips or takes off, **U** spends gold
   to upgrade an item (+12% of its stats per level, up to +10), **X** twice salvages it for gold. The bag holds 60.
+- **Comparing:** in the Armory and the shops, the item you're looking at is set against what you wear in the same slot,
+  stat by stat: a green arrow for a gain, a red one for a loss. Stats only the worn item has are struck through, and so
+  is its legendary power, as what you'd give up.
 
 ## Saving
 
@@ -261,8 +325,9 @@ it all.
 | `Adventure.java` | The story so far (flags), chests opened, challenges cleared, skill points, masteries, Bramble's stock, where you stood; saving and loading it |
 | `Story.java` | All the words: what everyone says as the story moves on, what the chests hold, the objective line, the intro and Rowan's gift |
 | `Worlds.java` | The explorable worlds (`forest()` and `city()`: their areas, people, chests, gates and roads), their names, and the main menu's clearing |
-| `Challenge.java` | The challenges: who asks, which world, the goal (nests or relays), the guardian, the danger, the rewards |
+| `Challenge.java` | The challenges: who asks, which world, the goal (nests, relays, a hunt, an escort or a defence), the guardian, the danger, the rewards |
 | `Relay.java` | A substation relay's state: switched on, powering up, held, done |
+| `Ward.java` | What you protect at Stormcliff: Copper and his route, or the stasis engine and its charge; broken and repaired |
 | `Battlefield.java` | Generates a challenge's battlefield: the shape, the nests, the scenery, the caches |
 | `Run.java` | One fight: the director (spawning, the danger clock, elites, swarms, the nests' guards), drops, pickups and caches, the guardian's ring, level-up choices, and the end of the fight |
 | `Mastery.java` | Ranger Ash's permanent upgrades |
@@ -284,10 +349,10 @@ it all.
 | `Dialogue.java` | The speech box's rules: typewriter text, lines that wait for a key or are called out, the voice's chirps |
 | `PixelCanvas.java` / `Sprite.java` / `Art.java` | The graphics engine: a pixel painting canvas, an anchored sprite, and the sprite atlas |
 | `ImportedArt.java` / `res/art/` | The drawn (PixelLab) sprites and the poses made from them |
-| `PeopleArt.java` / `TownArt.java` / `CityFolk.java` / `Doll.java` | The hero, the forest's people and stalls, and Lumen's (Vell, Juno, Gus, Pip, Sable's and Nix's counters), painted at the drawn art's pixel size and shaded like it by `Doll` |
+| `PeopleArt.java` / `TownArt.java` / `CityFolk.java` / `LabFolk.java` / `Doll.java` | The hero, the forest's people and stalls, Lumen's (Vell, Juno, Gus, Pip, Sable's and Nix's counters) and Stormcliff's (Ilse, Fern, Brass's and Quill's counters), painted at the drawn art's pixel size and shaded like it by `Doll` |
 | `SwordArt.java` | The hero's swords, drawn apart from him: one for each kind of weapon and rarity, painted at whatever angle a pose holds it |
 | `CreatureArt.java` / `FxArt.java` / `RunArt.java` / `BreakableArt.java` | Painted enemies (the fallback for the drawn ones), effects, pickups and item icons, crates |
-| `Theme.java` / `ThemeArt.java` / `ForestArt.java` / `CityArt.java` / `LabProps.java` | The forest, city and laboratory looks: floors, walls, colours, scenery (`ForestArt` and `CityArt` paint the forest's and the city's to match the drawn art) |
+| `Theme.java` / `ThemeArt.java` / `ForestArt.java` / `CityArt.java` / `LabArt.java` | The forest, city and Stormcliff looks: floors, walls, colours, scenery, and Copper, the stasis engine and the vine walls (`LabArt`), all painted to match the drawn art |
 | `Music*.java`, `Song*.java`, `Instruments.java`, `Sfx*.java`, `Audio*.java`, `Dsp.java`, `Snd.java` | The sound engine (below) |
 
 ## Graphics engine
@@ -312,8 +377,8 @@ nearest-neighbour filtering so the pixels stay crisp (`Art.SCALE`). The images a
 - **Lighting:** a colour wash for the mood (warm dappled light in the forest, blue dusk in the city), glows for
   lamps / neon / fire / lightning, and a vignette at the edges.
 - **Themes:** `Level.theme` picks the art set. The forest has grass, cobbles, dirt paths, hedges and tree canopy (see
-  **The forest's look** below), and the city cobbled streets lined with houses (see **The city's look**); the
-  laboratory (pale tile, teal panel walls with hazard bands) is ready for the chapter to come. Enemies change with the theme too: toadstools, foxes, snap-blooms, stump golems,
+  **The forest's look** below), the city cobbled streets lined with houses (see **The city's look**), and Stormcliff
+  wet slate walks between the laboratory's buildings above the sea (see **Stormcliff's look**). Enemies change with the theme too: toadstools, foxes, snap-blooms, stump golems,
   the Blight's nests and the Treant in the forest; rats, cats, drones, dumpsters and the Warden robot in the city; green
   oozes, wind-up mice, acid flasks, hulking green mutants and the Mad Scientist in the lab. The shade is the same in all three.
 
@@ -371,6 +436,25 @@ anything standing up, and a blue night wash over it all with warm pools of lampl
   and pylon, signposts at the roads, and the substation's relays (wrapped in the Blight's vines until they're powered),
   all shaded by a `Doll`.
 
+### Stormcliff's look
+
+`LabArt` paints the laboratory the same way, under a dark blue storm wash with rain and lightning drawn over it all
+(`Renderer.drawWeather`).
+
+- **Floors:** big wet slate flagstones outdoors, shining where the rain catches them, with puddles in the joints;
+  cream tiles with little teal diamonds indoors (the atrium, the lift hall, the greenhouse); iron grating on the walks
+  between. Beyond the walls is the storm-tossed sea far below, streaked with foam, and the walls are the cliff's dark
+  basalt sea wall with moss in the joints. Under the sea wall, the breakers churn.
+- **The laboratory's buildings** line the top edge of every walk: dark brick wings with tall arched windows lit green,
+  stone towers wound with copper pipe under little verdigris domes, glass conservatories in white iron with plants
+  pressed against the panes, and corrugated machine houses with riveted doors and pressure gauges. Every roof bristles
+  with lightning rods. The other edges get tesla coils, valves, gas cylinders, specimen tanks, crates and wet rocks.
+- **Standing about:** the atrium's great brass orrery, tesla coils, lightning rods, specimen tanks (something curled
+  up in each, one eye open), workbenches of bubbling flasks, planters of glowing star-plants, telescopes and cables.
+  The coils, tanks, star-plants and the orrery glow in the dark.
+- **In the fights:** Copper (standing, rolling, cutting with his torch, broken down with his lamp dark), the stasis
+  engine (cold blue light swirling in its glass column; dark and cracked when broken) and the Blight's walls of vines.
+
 ### The people
 
 The hero and the forest's people are painted in code, but on the drawn art's finer grid (`PeopleArt.Fine`) and shaded
@@ -392,7 +476,7 @@ once painted. The hero carries the sword for the weapon he wears: its name's las
 (iron, steel, blue steel with a gold guard, violet steel with glowing runes, sunsteel with a ruby). With nothing worn
 he carries the traveller's sword. To add a sword, add a `Kind`.
 
-The lab's floors, walls and scenery, the effects and the pickups are still the older painted art.
+The effects and the pickups are still the older painted art.
 
 To add a sprite: paint it in the matching `*Art` class, register it under a name, and ask the atlas for that name where
 it's drawn. To add a theme: add it to the `Theme` enum, give it tiles and props in `ThemeArt`, and draw the enemies
@@ -407,7 +491,7 @@ fails) the game just runs silent; if something goes wrong in one block the audio
 The sound effects are painted in about half a second on the audio thread, in parallel with opening the speakers, so the window
 never waits (on a Mac the very first open of the speakers can take a few seconds; music and sounds start when it's ready).
 
-- **The music** is eight pieces, of 16 or 32 bars, written by hand as notes over a chord progression, played live on the synthesised
+- **The music** is nine pieces, of 16 or 32 bars, written by hand as notes over a chord progression, played live on the synthesised
   instruments. Every piece is split into *layers* (pad, bass, melody, drums...) and each layer has a volume for each mood, so the
   score changes with the action without ever restarting or losing the beat:
   - **Forest** (G major, 96 bpm): a flute tune over harp and a warm pad, for wandering the forest.
@@ -421,11 +505,15 @@ never waits (on a Mac the very first open of the speakers can take a few seconds
     a walking bass and syncopated stabs under a string melody that grows out of the city's own tune, then a heroic brass
     strain in the relative major, over the city's drum machine with a swung hat. It opens on the piano alone, and swells
     (horns, an arpeggio, open hats) while you hold a relay or take a nest down.
-  - **Laboratory** (D dorian, 108 bpm): a theremin over a synth pad and a ticking clock, with a fight beat and lead.
+  - **Laboratory** (D dorian, 108 bpm): a theremin over a synth pad and a ticking clock, for walking Stormcliff.
+  - **Stormcliff battle** (D minor, 160 bpm, 32 bars): a synth toccata in sixteenths and organ stabs over a growling
+    bass; the theremin carries a melody grown out of the laboratory's own tune, then brass takes a strain over the
+    storm, with war drums rolling like thunder into every phrase. It swells while a specimen is awake nearby, while
+    Copper cuts through the vines, and while the engine charges.
   - **Forest boss** (E minor, 120 bpm, brass and war drums), **city boss** (D minor, 128 bpm, saw lead and electronic beat) and the **Mad Scientist** (A harmonic minor, 144 bpm, a frantic organ toccata over growling bass).
     Below half health the boss music brings in a second wave of parts (`Mood.PEAK`).
-  - `MusicDirector` picks the piece and mood from the game state: calm while exploring, the world's battle theme in a fight
-    (the lab uses its own theme's fight mood until it gets one), the boss piece for the guardian, the calm theme
+  - `MusicDirector` picks the piece and mood from the game state: calm while exploring, the world's battle theme in a fight,
+    the boss piece for the guardian, the calm theme
     again once the way home is open, silence after a defeat; pausing (and the world's screens) muffles and lowers the music.
     An important conversation *hushes* it: the song fades out but keeps its place, and picks up from there when the talk ends.
 - **Sound effects** (`Snd` lists them all): swings, hits, skills, enemy tells and attacks, deaths, boss events, nests,
@@ -434,7 +522,7 @@ never waits (on a Mac the very first open of the speakers can take a few seconds
   with distance. Sounds have a minimum gap and a voice limit so a crowd can't machine-gun one sound, and a voice that is taken over
   fades out in 10 ms rather than being cut.
 - **Ambience** is made live from filtered noise: wind and the odd bird in the forest, a low city hum and distant traffic and
-  the odd horn in the city, and in the lab a fluorescent hum, ventilation and now and then a computer beep or a bubbling tank. It ducks itself during fights.
+  the odd horn in the city, and at Stormcliff rain hissing on stone, heavy drops pattering close by, the sea breaking far below in slow swells and now and then a beep from a machine (the thunder is the lightning's own). It ducks itself during fights.
 - **Mixing:** music and effects are balanced by *A-weighted loudness* (how loud a sound seems to an ear, not how much energy it has),
   so a swish, a thump and a jingle of the same number seem equally loud. Big effects duck the music by up to about 3 dB; a
   look-ahead limiter keeps the output under 0.995 whatever happens; DC offset and sub-bass rumble are filtered out; deep booms

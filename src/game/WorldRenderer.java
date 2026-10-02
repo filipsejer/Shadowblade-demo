@@ -87,6 +87,21 @@ final class WorldRenderer {
                 shadow(g, r.x, r.y - 2, 40, 10);
                 items.add(new Item(r.y, () -> drawRelay(g, w, r)));
             }
+            Ward ward = run.ward;
+            if (ward != null) {
+                drawWardGround(g, w, run, ward);
+                for (int i = ward.nextStop; i < ward.stops.length; i++) {             // the walls of vines still in his way
+                    Util.Vec v = ward.pointAt(ward.stops[i]);
+                    if (!view.intersects(v.x() - 120, v.y() - 140, 240, 200)) continue;
+                    boolean cutting = i == ward.nextStop && ward.work > 0;
+                    double vx = v.x() + (ward.faceLeft ? -34 : 34) * (i == ward.nextStop && ward.work > 0 ? 1 : 0);
+                    items.add(new Item(v.y() + 6, () -> drawVines(g, w, vx, v.y() + 6, cutting ? ward.work / Ward.WORK_TIME : 1)));
+                }
+                if (view.intersects(ward.x - 160, ward.y - 200, 320, 260)) {
+                    shadow(g, ward.x, ward.y - 2, ward.radius * 1.3, ward.radius * 0.4);
+                    items.add(new Item(ward.y, () -> drawWard(g, w, ward)));
+                }
+            }
         }
         for (LevelView.Standing st : levelView.standing(level, view)) {     // the trees and rocks around the walls
             items.add(new Item(st.y(), () -> st.sprite().draw(g, st.x(), st.y(), Art.SCALE, st.flip())));
@@ -121,8 +136,13 @@ final class WorldRenderer {
             g.setColor(new Color(art.ambient, true));
             g.fill(view);
             levelView.drawGlows(g, view);
-            for (Level.Landmark l : level.landmarks) {                       // street lamps light the ground round them
-                if (l.kind().equals("lamp") && view.intersects(l.x() - 220, l.y() - 320, 440, 440)) levelView.drawGlow(g, l.x(), l.y(), 0x01FFE7A0);
+            for (Level.Landmark l : level.landmarks) {                       // lamps light the ground round them (and the lab's machines glow)
+                int glow = landmarkGlow(l.kind());
+                if (glow != 0 && view.intersects(l.x() - 220, l.y() - 320, 440, 440)) levelView.drawGlow(g, l.x(), l.y(), glow);
+            }
+            if (run != null && run.ward != null && !run.ward.broken) {         // Copper's lamp, the engine's cold light
+                Ward wd = run.ward;
+                if (view.intersects(wd.x - 220, wd.y - 320, 440, 440)) levelView.drawGlow(g, wd.x, wd.y + (wd.kind == Ward.Kind.ROBOT ? 20 : 40), wd.kind == Ward.Kind.ROBOT ? 0x02FFC070 : 0x0190D0FF);
             }
             if (run != null) for (Relay r : run.relays) {
                 if (r.done && view.intersects(r.x - 220, r.y - 320, 440, 440)) levelView.drawGlow(g, r.x, r.y + 30, 0x01FFE7A0);
@@ -142,6 +162,18 @@ final class WorldRenderer {
         if (run != null) drawPlayerBar(g, p);
         if (run != null) drawCachePrompt(g, w, run);
         drawPrompt(g, w);
+    }
+
+    /** The light a piece of scenery gives off at night (see {@link LevelView#drawGlow}), or 0 for none. */
+    private static int landmarkGlow(String kind) {
+        return switch (kind) {
+            case "lamp" -> 0x01FFE7A0;
+            case "coil" -> 0x02B98CFF;
+            case "tank" -> 0x0250FF90;
+            case "planter.star" -> 0x02FFD070;
+            case "orrery" -> 0x01FFD890;
+            default -> 0;
+        };
     }
 
     private static boolean big(Pickup pk) {
@@ -269,7 +301,7 @@ final class WorldRenderer {
         g.setStroke(new BasicStroke(3f));
         g.draw(new Ellipse2D.Double(x - r, y - r * 0.38, r * 2, r * 0.76));
         Art.frame("run.portal", w.time, open ? 10 : 2).draw(g, x, y, Art.SCALE, false, 0, open ? 1f : 0.35f);
-        boolean city = c.theme == Theme.CITY;
+        boolean city = c.theme != Theme.FOREST;                                          // (the city's and the laboratory's are locked, not overgrown)
         if (!open && !city) {                                                             // thorns across it
             g.setStroke(new BasicStroke(5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
             for (int i = 0; i < 5; i++) {
@@ -435,10 +467,17 @@ final class WorldRenderer {
         return 9 + 3 * Math.sin((w.time + e.animOffset) * 3);
     }
 
+    /** How big an enemy is drawn: elites a size up, specimens bigger still (drawn art keeps its pixels even). */
+    private static double scaleOf(Enemy e, Sprite s) {
+        if (e.specimen) return s.k < 1 ? Art.SCALE * 1.5 : Art.SCALE + 2;
+        if (e.elite) return s.k < 1 ? Art.SCALE * 1.5 : Art.SCALE + 1;
+        return Art.SCALE;
+    }
+
     private void drawEnemy(Graphics2D g, World w, Enemy e) {
         Sprite s = spriteFor(w, e);
         double x = e.x, fy = e.y + e.radius * 0.85 - hover(w, e) - e.z;   // airborne: floats up off its shadow, which stays on the ground
-        double sc = Art.SCALE;
+        double sc = scaleOf(e, s);
         if (e.intangible()) {                                             // shadow mode: a dark see-through silhouette with a violet edge
             float a = 0.6f;
             if (e.spawnIn <= 0 && e.shadowTimer < 1.0) a *= (float) (0.55 + 0.45 * Math.abs(Math.sin(e.shadowTimer * 16)));
@@ -451,8 +490,20 @@ final class WorldRenderer {
         }
         float alpha = e.spawnIn > 0 ? 0.35f : 1f;
         if (e.type == Enemy.Type.SHADE && e.spawnIn <= 0 && e.shadowTimer < 1.0) alpha *= (float) (0.6 + 0.4 * Math.abs(Math.sin(e.shadowTimer * 16)));
-        if (e.elite) {                                                          // an elite: bigger, with a gold glow round it
-            sc = s.k < 1 ? Art.SCALE * 1.5 : Art.SCALE + 1;                    // drawn art: 3 units a pixel, so its pixels stay even
+        if (e.specimen) {                                                       // a specimen: bigger still, glowing violet (asleep, dimmer)
+            double k = 0.5 + 0.5 * Math.sin(w.time * (e.awake ? 6 : 1.5));
+            for (int[] o : new int[][]{{-3, 0}, {3, 0}, {0, -3}, {0, 3}}) {
+                s.drawSilhouette(g, x + o[0], fy + o[1], sc, e.faceLeft, 0xE65AFF, (float) ((e.awake ? 0.35 : 0.15) + 0.25 * k) * alpha);
+            }
+            if (!e.awake) {                                                      // asleep: a drift of z's
+                g.setFont(f14b);
+                for (int i = 0; i < 3; i++) {
+                    double ph = (w.time * 0.6 + i / 3.0) % 1;
+                    g.setColor(new Color(230, 200, 255, (int) (200 * (1 - ph))));
+                    g.drawString("z", (float) (x + 30 + ph * 26 + i * 4), (float) (fy - s.above(sc) - ph * 40));
+                }
+            }
+        } else if (e.elite) {                                                   // an elite: bigger, with a gold glow round it
             double k = 0.5 + 0.5 * Math.sin(w.time * 5);
             for (int[] o : new int[][]{{-3, 0}, {3, 0}, {0, -3}, {0, 3}}) {
                 s.drawSilhouette(g, x + o[0], fy + o[1], sc, e.faceLeft, 0xFFC840, (float) (0.35 + 0.3 * k) * alpha);
@@ -534,7 +585,7 @@ final class WorldRenderer {
     private void drawDizzy(Graphics2D g, World w, Enemy e) {
         Sprite[] star = Art.frames("fx.star");
         Sprite s = spriteFor(w, e);
-        double top = e.y + e.radius * 0.85 - hover(w, e) - e.z - s.above(Art.SCALE);
+        double top = e.y + e.radius * 0.85 - hover(w, e) - e.z - s.above(scaleOf(e, s));
         for (int i = 0; i < 3; i++) {
             double a = w.time * 6 + i * Math.PI * 2 / 3;
             star[(int) (w.time * 8 + i) % star.length].draw(g, e.x + Math.cos(a) * 16, top + 6 + Math.sin(a) * 4, 2, false);
@@ -726,6 +777,7 @@ final class WorldRenderer {
 
     /** A flask bomb: the spot is marked, a flask falls onto it, then it bursts in a green flash. */
     private void drawBlast(Graphics2D g, World w, Blast b) {
+        if (b.lightning) { drawStrike(g, w, b); return; }
         if (b.burst) {
             double a = Util.clamp(b.after / Blast.LINGER, 0, 1);
             Ellipse2D flash = new Ellipse2D.Double(b.x - b.radius, b.y - b.radius, b.radius * 2, b.radius * 2);
@@ -749,6 +801,122 @@ final class WorldRenderer {
         g.draw(new Line2D.Double(b.x, b.y - 9, b.x, b.y + 9));
         double drop = 420 * (1 - p) * (1 - p);                                                         // the flask falls faster as it nears
         Art.frame("proj.acidball", w.time, 8).draw(g, b.x, b.y - drop, 4, false, w.time * 5, 1f);
+    }
+
+    /**
+     * A lightning strike: first the spot, marked in pale blue with a ring closing in and the air crackling over it;
+     * then the bolt itself, jagged down out of the sky, fading.
+     */
+    private void drawStrike(Graphics2D g, World w, Blast b) {
+        Color pale = new Color(200, 228, 255);
+        if (b.burst) {
+            double a = Util.clamp(b.after / Blast.LINGER, 0, 1);
+            if (b.boltX != null) {
+                Path2D bolt = new Path2D.Double();
+                bolt.moveTo(b.boltX[0], b.boltY[0]);
+                for (int i = 1; i < b.boltX.length; i++) bolt.lineTo(b.boltX[i], b.boltY[i]);
+                g.setStroke(new BasicStroke(14f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g.setColor(Util.alpha(new Color(140, 180, 255), 0.35 * a));
+                g.draw(bolt);
+                g.setStroke(new BasicStroke(5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g.setColor(Util.alpha(Color.WHITE, 0.95 * a));
+                g.draw(bolt);
+            }
+            Ellipse2D flash = new Ellipse2D.Double(b.x - b.radius, b.y - b.radius * 0.6, b.radius * 2, b.radius * 1.2);
+            g.setColor(Util.alpha(pale, 0.4 * a));
+            g.fill(flash);
+            return;
+        }
+        double p = Util.clamp(1 - b.delay / b.total, 0, 1);
+        Ellipse2D mark = new Ellipse2D.Double(b.x - b.radius, b.y - b.radius * 0.6, b.radius * 2, b.radius * 1.2);
+        g.setColor(Util.alpha(new Color(120, 170, 255), 0.06 + 0.22 * p));
+        g.fill(mark);
+        g.setStroke(new BasicStroke(2.5f));
+        g.setColor(Util.alpha(pale, 0.4 + 0.5 * p));
+        g.draw(mark);
+        double inner = 1 - p;
+        g.draw(new Ellipse2D.Double(b.x - b.radius * inner, b.y - b.radius * 0.6 * inner, b.radius * 2 * inner, b.radius * 1.2 * inner));
+        if (p > 0.5 && (int) (w.time * 30) % 3 == 0) {                        // the air crackling, just before
+            double ax = b.x + (FxArt.hash((int) (w.time * 30), (int) b.x, 1) % 60 - 30), ay = b.y - 30 - FxArt.hash((int) (w.time * 30), (int) b.y, 2) % 40;
+            g.setStroke(new BasicStroke(2f));
+            g.setColor(Util.alpha(Color.WHITE, 0.8));
+            g.draw(new Line2D.Double(ax, ay, ax + 8, ay + 10));
+            g.draw(new Line2D.Double(ax + 8, ay + 10, ax + 2, ay + 18));
+        }
+    }
+
+    // ------------------------------------------------------------------ what you protect: Copper, the engine
+
+    /**
+     * The ground round the ward: the engine's frost (and how far its cold reaches); for Copper, the next stretch of his
+     * route, dashed ahead of him; and either one's repair ring while it's broken.
+     */
+    private void drawWardGround(Graphics2D g, World w, Run run, Ward wd) {
+        if (wd.kind == Ward.Kind.ENGINE && !wd.broken && run.nestsLeft > 0) {
+            double r = Ward.CHILL;
+            Ellipse2D chill = new Ellipse2D.Double(wd.x - r, wd.y - r * 0.6, r * 2, r * 1.2);
+            g.setColor(Util.alpha(Ward.FROST, 0.07 + 0.03 * Math.sin(w.time * 2)));
+            g.fill(chill);
+            g.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f, new float[]{10, 10}, (float) (w.time * 8)));
+            g.setColor(Util.alpha(Ward.FROST, 0.35));
+            g.draw(chill);
+        }
+        if (wd.kind == Ward.Kind.ROBOT && run.nestsLeft > 0) {                 // the way ahead: a dashed line along his route
+            Path2D ahead = new Path2D.Double();
+            ahead.moveTo(wd.x, wd.y);
+            double step = 40;
+            for (double d = wd.along + step; d < Math.min(wd.length, wd.along + 900); d += step) {
+                Util.Vec v = wd.pointAt(d);
+                ahead.lineTo(v.x(), v.y());
+            }
+            g.setStroke(new BasicStroke(4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f, new float[]{2, 16}, (float) (18 - (w.time * 30) % 18)));
+            g.setColor(Util.alpha(Ward.COPPER_LIGHT, 0.75));
+            g.draw(ahead);
+        }
+        if (wd.broken) {                                                       // the repair ring: fills as you stand by it
+            double r = Ward.REPAIR_RANGE + wd.radius;
+            Ellipse2D ring = new Ellipse2D.Double(wd.x - r, wd.y - r * 0.6, r * 2, r * 1.2);
+            g.setColor(Util.alpha(new Color(255, 120, 90), 0.1 + 0.05 * Math.sin(w.time * 6)));
+            g.fill(ring);
+            g.setStroke(new BasicStroke(3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f, new float[]{12, 9}, (float) (w.time * 10)));
+            g.setColor(Util.alpha(new Color(255, 150, 110), 0.6));
+            g.draw(ring);
+            g.setStroke(new BasicStroke(7f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g.setColor(new Color(255, 220, 160, 230));
+            g.draw(new Arc2D.Double(wd.x - r, wd.y - r * 0.6, r * 2, r * 1.2, 90, -360 * Util.clamp(wd.repair, 0, 1), Arc2D.OPEN));
+        }
+    }
+
+    /** Copper (rolling, cutting, waiting for you, or broken down) or the engine, with its health bar over it. */
+    private void drawWard(Graphics2D g, World w, Ward wd) {
+        Sprite s;
+        if (wd.kind == Ward.Kind.ROBOT) {
+            String key = wd.broken ? "ward.copper.broken" : wd.work > 0 ? "ward.copper.work" : wd.moving ? "ward.copper.roll" : "ward.copper";
+            s = Art.frame(key, w.time, wd.work > 0 ? 14 : wd.moving ? 8 : 2);
+        } else {
+            s = wd.broken ? Art.frames("ward.engine.broken")[0] : Art.frame("ward.engine", w.time, 6);
+        }
+        s.draw(g, wd.x, wd.y, Art.SCALE, wd.faceLeft);
+        if (wd.flash > 0) s.drawSilhouette(g, wd.x, wd.y, Art.SCALE, wd.faceLeft, 0xFF8A70, 0.3f);
+        double top = wd.y - s.above(Art.SCALE);
+        double bw = wd.kind == Ward.Kind.ROBOT ? 70 : 110, bx = wd.x - bw / 2, by = top - 16;
+        g.setColor(new Color(20, 20, 22, 220));
+        g.fill(new Rectangle2D.Double(bx - 2, by - 2, bw + 4, 10));
+        double frac = wd.broken ? Util.clamp(wd.repair, 0, 1) : Util.clamp(wd.hp / wd.maxHp, 0, 1);
+        g.setColor(wd.broken ? new Color(255, 160, 110) : frac < 0.3 ? new Color(235, 90, 70) : wd.kind == Ward.Kind.ROBOT ? new Color(255, 190, 100) : new Color(140, 210, 255));
+        g.fill(new Rectangle2D.Double(bx, by, bw * frac, 6));
+        g.setFont(f12);
+        String name = wd.kind == Ward.Kind.ROBOT ? "COPPER" : "STASIS ENGINE";
+        boolean done = w.run == null || w.run.nestsLeft <= 0;
+        String state = done ? "" : wd.broken ? "BROKEN - STAND BY TO REPAIR" : wd.kind == Ward.Kind.ROBOT && wd.work > 0 ? "CUTTING THROUGH" : wd.kind == Ward.Kind.ROBOT && !wd.moving ? "WAITING FOR YOU" : "";
+        centered(g, name, wd.x, by - 6, wd.kind == Ward.Kind.ROBOT ? new Color(255, 214, 150) : new Color(190, 230, 255));
+        if (!state.isEmpty()) centered(g, state, wd.x, by - 22, wd.broken ? new Color(255, 150, 120) : new Color(235, 235, 245));
+    }
+
+    /** A wall of vines across Copper's way (thinning as he cuts through it, {@code left} 1..0). */
+    private void drawVines(Graphics2D g, World w, double x, double y, double left) {
+        Sprite s = Art.frame("ward.vines", w.time, 2);
+        s.draw(g, x, y, Art.SCALE, false, 0, (float) (0.35 + 0.65 * left));
     }
 
     /** An Ice Storm: frost on the ground, snow drifting down and ice shards circling. */

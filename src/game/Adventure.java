@@ -52,13 +52,13 @@ final class Adventure {
     /** Forgets where you stood in a world, so you arrive at its entrance next time. */
     void clearSpot(String w) { spots.remove(w); }
 
-    /** Puts a fresh set of four items on the merchant's table: mostly common and uncommon, a rare now and then. */
-    void restock() {
+    /** Puts a fresh set of four items on the merchant's table, as good as {@code world}'s (see {@link Item#odds}). */
+    void restock(String world) {
         Random rng = new Random(9157L * (restocks + 1) + 31);
         restocks++;
         stock.clear();
         for (int i = 0; i < 4; i++) {
-            Item.Rarity r = Item.rarity(rng, new double[]{40, 40, 17, 3 + restocks, 0});
+            Item.Rarity r = Item.rarity(rng, Item.odds(world, Item.Source.SHOP, restocks / 2));
             stock.add(Item.roll(rng, r, Math.min(2, restocks / 3)));
         }
     }
@@ -134,7 +134,7 @@ final class Adventure {
             Item it = Item.decode(p.getProperty("stock." + i, ""));
             if (it != null) a.stock.add(it);
         }
-        if (a.stock.isEmpty()) a.restock();
+        if (a.stock.isEmpty()) a.restock(a.world);
         a.fights = Profile.intOf(p, "fights");
         a.wins = Profile.intOf(p, "wins");
         return a;

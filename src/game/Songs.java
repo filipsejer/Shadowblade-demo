@@ -20,6 +20,9 @@ import java.util.Map;
  *   <li><b>City battle</b> (A minor, 148 bpm): the city's fights. Electric piano comping, a walking bass and jazzy
  *       stabs under a string melody that grows out of the city's own tune, a heroic brass strain in the relative
  *       major, and the city's drum machine with a swung hat.</li>
+ *   <li><b>Stormcliff battle</b> (D minor, 160 bpm): the laboratory's fights. A toccata of synth sixteenths and organ
+ *       stabs over a growling bass, the theremin carrying a melody that grows out of the laboratory's own tune, a brass
+ *       strain over the storm, the drum machine, and war drums rolling like thunder at the end of each phrase.</li>
  *   <li><b>Forest boss</b> (E minor, 120 bpm) and <b>city boss</b> (D minor, 128 bpm): brass and lead melodies over war
  *       drums; below half health the boss music gets a second, more frantic layer of parts.</li>
  * </ul>
@@ -30,7 +33,7 @@ import java.util.Map;
 final class Songs {
     private Songs() {}
 
-    enum Tune { FOREST, FOREST_BATTLE, CITY, CITY_BATTLE, FOREST_BOSS, CITY_BOSS, LAB, LAB_BOSS }
+    enum Tune { FOREST, FOREST_BATTLE, CITY, CITY_BATTLE, FOREST_BOSS, CITY_BOSS, LAB, LAB_BOSS, LAB_BATTLE }
 
     private static final Map<Tune, Song> CACHE = new EnumMap<>(Tune.class);
 
@@ -44,6 +47,7 @@ final class Songs {
             case CITY_BOSS -> cityBoss();
             case LAB -> lab();
             case LAB_BOSS -> labBoss();
+            case LAB_BATTLE -> labBattle();
         });
     }
 
@@ -61,7 +65,7 @@ final class Songs {
     }
 
     /** Whole-song level corrections in dB, so that (by A-weighted loudness) every piece of music is equally loud. */
-    private static final Map<String, Double> SONG_TRIM = Map.of("forest", 1.5, "forest-battle", -2.0, "city", -1.6, "city-battle", 0.8, "forest-boss", 0.0, "city-boss", 0.2, "lab", 1.6, "lab-boss", 0.0);
+    private static final Map<String, Double> SONG_TRIM = Map.of("forest", 1.5, "forest-battle", -2.0, "city", -1.6, "city-battle", 0.8, "forest-boss", 0.0, "city-boss", 0.2, "lab", 1.6, "lab-boss", 0.0, "lab-battle", 1.0);
 
     /** Level corrections in dB per part, measured so every part sits where a mix engineer would put it. */
     private static final Map<String, Double> TRIM = new java.util.HashMap<>();
@@ -138,6 +142,17 @@ final class Songs {
         TRIM.put("lab/tick", -2.5);
         TRIM.put("lab/beat", -12.0);
         TRIM.put("lab/hats", -2.5);
+        TRIM.put("lab-battle/pad", -11.0);
+        TRIM.put("lab-battle/toccata", -8.0);
+        TRIM.put("lab-battle/bass", -9.5);
+        TRIM.put("lab-battle/organ", -6.0);
+        TRIM.put("lab-battle/theremin", -11.0);
+        TRIM.put("lab-battle/brass", -6.0);
+        TRIM.put("lab-battle/strings", -9.0);
+        TRIM.put("lab-battle/pulse", -10.0);
+        TRIM.put("lab-battle/beat", -12.0);
+        TRIM.put("lab-battle/hats", -6.5);
+        TRIM.put("lab-battle/thunder", -15.0);
         TRIM.put("lab-boss/pad", -10.0);
         TRIM.put("lab-boss/bass", -8.5);
         TRIM.put("lab-boss/organ", -1.0);
@@ -392,6 +407,53 @@ final class Songs {
         beat.add(Song.drums(38, "....X.......X...", 0, 16));
         beat.add(Song.drums(39, "....x.......x...", 0, 16));
         layer(s, "hats", Inst.DRUMS_ELECTRO, 0.25, 0.1, 0.1, 0, 0.8, 0.8, Song.drums(42, "x.xox.xox.xox.xo", 0, 16));
+        return s;
+    }
+
+    /**
+     * Stormcliff's fights (D minor, 160 bpm): a synth toccata in sixteenths and organ stabs over a growling bass; the
+     * theremin's melody grows out of the laboratory's own tune (D, F, A, up to the octave), then brass takes a strain
+     * over the storm; war drums roll at the end of every phrase like thunder.
+     */
+    private static Song labBattle() {
+        Song s = new Song("lab-battle", 160, 32, 0.6, 0.55, 0.75);
+        s.fadeIn = 0.6;
+        List<String> chords = List.of("Dm", "Dm", "Bb", "C", "Dm", "Dm", "Gm", "A",
+                                      "Dm", "F", "C", "Gm", "Bb", "C", "A", "A7",
+                                      "Bb", "C", "F", "Dm", "Gm", "A", "Dm", "A7",
+                                      "Gm", "Dm", "Bb", "F", "Gm", "Bb", "A", "A7");
+        s.chords.addAll(chords);
+        List<Note> theremin = Song.melody("""
+            D5:3 F5:3 A5:2 D6:4 A5:4 | A5:2 C6:2 A5:4 F5:8 | D5:3 F5:3 Bb5:2 D6:4 Bb5:4 | C6:4 G5:4 E5:4 G5:4 |
+            A5:3 G5:3 F5:2 D5:4 F5:4 | A5:6 D6:2 F6:8 | G5:3 Bb5:3 D6:2 G6:4 D6:4 | E6:4 C#6:4 A5:4 E5:4 |
+            D6:3 C6:3 A5:2 F5:4 A5:4 | C6:3 A5:3 F5:2 A5:4 C6:4 | G5:3 E5:3 C5:2 E5:4 G5:4 | Bb5:4 D6:4 G5:8 |
+            F5:3 Bb5:3 D6:2 F6:4 D6:4 | E6:4 C6:4 G5:4 E5:4 | A5:3 C#6:3 E6:2 A6:8 | G6:4 E6:4 C#6:4 A5:4
+            """, 0);
+        List<Note> brass = Song.melody("""
+            F5:4 Bb5:4 D6:6 C6:2 | E6:4 G5:4 C6:8 | A5:4 C6:4 F6:6 E6:2 | D6:4 A5:4 F5:8 |
+            G5:3 Bb5:3 D6:2 G6:4 D6:2 Bb5:2 | E6:4 C#6:4 A5:8 | F6:6 E6:2 D6:8 | C#6:4 E6:4 G6:4 E6:4 |
+            D6:3 Bb5:3 G5:2 Bb5:4 D6:4 | F6:3 D6:3 A5:2 D6:4 F6:4 | F6:4 D6:4 Bb5:8 | C6:4 A5:4 F5:4 A5:4 |
+            G5:2 A5:2 Bb5:4 D6:4 G6:4 | F6:6 D6:2 Bb5:8 | A5:3 C#6:3 E6:2 A6:8 | G6:4 E6:4 C#6:4 A5:4
+            """, 16);
+        layer(s, "pad", Inst.PAD_DARK, 0, 0.6, 0, 0.7, 0.55, 0.55, Song.pad(chords, 0.8f));
+        layer(s, "toccata", Inst.ARP_SYNTH, -0.25, 0.3, 0.4, 0.95, 0.75, 0.75, Song.arp(chords, new int[]{0, 2, 1, 2, 3, 2, 1, 2}, 1, 1, 0, 0.75f));
+        layer(s, "bass", Inst.BASS_GROWL, 0, 0.03, 0, 0.5, 1.0, 1.0, Song.bass(chords, "0:0:2 2:0:2 4:0:2 6:2:2 8:0:2 10:0:2 12:1:2 14:2:2", 0.9f));
+        layer(s, "organ", Inst.ORGAN, 0.2, 0.4, 0.1, 0, 0.7, 0.85, Song.chug(chords, 1, 2, 0, 0.8f, "X..X..X.X..X..X."));
+        layer(s, "theremin", Inst.THEREMIN, 0.1, 0.5, 0.25, 0, 1.0, 1.0, theremin);
+        layer(s, "brass", Inst.BRASS, -0.1, 0.4, 0.05, 0, 1.0, 1.0, brass);
+        layer(s, "strings", Inst.STRINGS, 0.25, 0.5, 0, 0, 0, 0.6, Song.pad(chords, 0.6f));
+        layer(s, "pulse", Inst.DRUMS_ELECTRO, 0, 0.1, 0, 0.55, 0, 0, Song.drums(36, "X.......X.......", 0, 32));
+        Layer beat = layer(s, "beat", Inst.DRUMS_ELECTRO, 0, 0.12, 0, 0, 1.0, 1.0, new ArrayList<>());
+        for (int bar = 0; bar < 32; bar++) {
+            boolean phraseEnd = bar % 8 == 7;
+            beat.add(Song.drums(36, "X..X..X...X..X..", bar, bar + 1));
+            beat.add(Song.drums(38, phraseEnd ? "....X.......XXXX" : "....X.......X...", bar, bar + 1));
+            beat.add(Song.drums(39, "....x.......x..x", bar, bar + 1));
+        }
+        layer(s, "hats", Inst.DRUMS_ELECTRO, 0.25, 0.1, 0.1, 0, 0.75, 0.85, Song.drums(42, "xxXxxxXxxxXxxxXx", 0, 32));
+        Layer thunder = layer(s, "thunder", Inst.DRUMS_WAR, -0.15, 0.4, 0, 0, 0.6, 1.0, new ArrayList<>());
+        for (int bar = 7; bar < 32; bar += 8) thunder.add(Song.drums(41, "........X.X.XXXX", bar, bar + 1));   // a roll of toms, like thunder, into each phrase
+        for (int bar = 0; bar < 32; bar += 8) thunder.add(Song.drums(43, "X...............", bar, bar + 1));
         return s;
     }
 

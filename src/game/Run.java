@@ -16,9 +16,13 @@ import java.util.Random;
  * level-up offers a choice of {@link Perk}s; all of that is gone when the fight ends. The horde never stops coming,
  * and it gets tougher the longer you take (the danger clock).
  *
- * <p>The goal: destroy the Blight's nests, spread across the map (each one spits out guards when you come near), or
- * in the city's substation, switch its relays back on and hold the ground round each one while it powers up
- * ({@link Relay}). With that done, the challenge's guardian arrives inside a ring you can't leave, if it has one.
+ * <p>The goal: destroy the Blight's nests, spread across the map (each one spits out guards when you come near); in
+ * the city's substation, switch its relays back on and hold the ground round each one while it powers up
+ * ({@link Relay}); at Stormcliff, hunt down the escaped specimens (they bolt when hurt, shedding more monsters), see
+ * Copper safely across the map, or keep the stasis engine standing while it charges (both a {@link Ward}, which some
+ * of the horde goes for instead of you). Stormcliff's fights also have lightning: marked spots on the ground that the
+ * storm strikes a moment later, hurting you and flattening any monster standing there.
+ * With that done, the challenge's guardian arrives inside a ring you can't leave, if it has one.
  * Then a chest and the way home. Along the way: elites with chests, crates with pickups, and caches you can open with the gold
  * you've picked up. Gold, items, and (for a win) the challenge's reward of skill points are yours to keep.
  * {@link World} runs the fight itself; this class is the director on top.
@@ -46,12 +50,18 @@ final class Run {
     int gold;
     /** Items found this fight: yours to keep when it ends, however it ends. */
     final List<Item> loot = new ArrayList<>();
+    /** Items out of the chests opened since the last TREASURE screen: it shows them, so you see what you got. */
+    final List<Item> unseen = new ArrayList<>();
     final List<Pickup> pickups = new ArrayList<>();
 
     /** The goal's count: nests, or relays in a relay fight (see {@link Challenge#goalWord}). */
     int nestsTotal, nestsLeft, elitesKilled, cachesOpened;
     /** A relay fight's relays. */
     final List<Relay> relays = new ArrayList<>();
+    /** What you protect in an escort or a defence (null otherwise). */
+    Ward ward;
+    /** Seconds until the storm next strikes (Stormcliff's fights), and until Copper's cutting next throws sparks. */
+    private double stormTimer = 5, sparkTimer, chillTimer;
     boolean bossSpawned, bossDead;
     double bossWarning;
     boolean ringActive;
@@ -103,27 +113,50 @@ final class Run {
         r.spawnTimer = 2;
         r.retune(w);
         for (Util.Vec v : w.level.nestSpots) {
-            if (c.goal == Challenge.Goal.RELAYS) {
-                r.relays.add(new Relay(v.x(), v.y()));
-            } else {
-                Enemy nest = new Enemy(Enemy.Type.NEST, v.x(), v.y(), r.hpMult(p, Enemy.Type.NEST), 1, w.rng);
-                nest.spawnIn = 0;
-                w.enemies.add(nest);
+            switch (c.goal) {
+                case RELAYS -> r.relays.add(new Relay(v.x(), v.y()));
+                case HUNT -> {                                              // a specimen, dormant until something comes near
+                    Enemy sp = new Enemy(Enemy.Type.BRUTE, v.x(), v.y(), r.hpMult(p, Enemy.Type.BRUTE) * SPECIMEN_HP, r.dmgMult(p) * 1.3, w.rng);
+                    sp.specimen = true;
+                    sp.spawnIn = 0;
+                    w.enemies.add(sp);
+                }
+                default -> {
+                    Enemy nest = new Enemy(Enemy.Type.NEST, v.x(), v.y(), r.hpMult(p, Enemy.Type.NEST), 1, w.rng);
+                    nest.spawnIn = 0;
+                    w.enemies.add(nest);
+                }
             }
             r.nestsTotal++;
         }
+        if (c.goal == Challenge.Goal.ESCORT) r.ward = Ward.robot(w.level.route, c.nests, ROBOT_HP * (1 + 0.15 * r.loops));
+        if (c.goal == Challenge.Goal.DEFEND) r.ward = Ward.engine(w.level.route.get(0).x(), w.level.route.get(0).y(), ENGINE_HP * (1 + 0.15 * r.loops));
+        if (r.ward != null) r.nestsTotal = 1;                              // (one goal: getting him there, or charging it)
         r.nestsLeft = r.nestsTotal;
         for (Util.Vec v : w.level.cacheSpots) r.pickups.add(new Pickup(Pickup.Kind.CACHE, v.x(), v.y(), 0));
         r.priceCaches();
         w.banner = c.title;
         w.bannerTimer = 3;
-        w.notice = c.goal == Challenge.Goal.RELAYS ? "SWITCH ON THE " + r.nestsTotal + " RELAYS" : "DESTROY THE " + r.nestsTotal + " NESTS";
+        w.notice = switch (c.goal) {
+            case RELAYS -> "SWITCH ON THE " + r.nestsTotal + " RELAYS";
+            case HUNT -> "HUNT DOWN THE " + r.nestsTotal + " SPECIMENS";
+            case ESCORT -> "GET COPPER TO THE JUNCTION";
+            case DEFEND -> "KEEP THE ENGINE STANDING";
+            default -> "DESTROY THE " + r.nestsTotal + " NESTS";
+        };
         w.noticeHint = (r.loops > 0 ? "Loop " + (r.loops + 1) + ": the Blight is stronger than last time.   " : "")
             + "Hold ENTER to swing your sword. The longer you take, the worse it gets.";
         w.noticeTimer = 6;
         r.pendingLevels = a.rank(Mastery.HEAD_START);
         return r;
     }
+
+    /** A specimen's health, in brutes; Copper's and the engine's. */
+    static final double SPECIMEN_HP = 9, ROBOT_HP = 900, ENGINE_HP = 1500;
+    /** How much tougher Doctor Morrow is than the other guardians (each of his two stages). */
+    static final double MORROW_HP = 3.5;
+    /** The share of the walkers that go for the ward instead of you, and how hard they hit it. */
+    static final double WARD_SHARE = 0.42, WARD_DAMAGE = 0.85;
 
     /** A fresh fighter: just the sword, plus whatever the gear and the masteries give. */
     private Player makePlayer(World w, Level level) {
@@ -241,7 +274,10 @@ final class Run {
             if (swarmTimer <= 0) { swarmTimer = SWARM_EVERY; swarm(w, w.player.x, w.player.y); }
             updateNests(w, dt);
             updateRelays(w, dt);
+            updateSpecimens(w);
+            updateWard(w, dt);
         }
+        updateStorm(w, dt);
         if (bossWarning > 0) {
             bossWarning -= dt;
             w.shake = Math.max(w.shake, 3);
@@ -260,15 +296,18 @@ final class Run {
         spawnTimer -= dt;
         if (spawnTimer > 0) return;
         Relay surge = chargingRelay();
-        spawnTimer = surge != null ? 0.22 : 0.33;
-        int want = (int) Math.min(MAX_ENEMIES, population(w.player) * (surge != null ? 1.3 : 1)) - w.enemies.size();
+        boolean siege = ward != null && ward.targetable() && (ward.work > 0 || ward.kind == Ward.Kind.ENGINE);   // Copper cutting, the engine charging
+        spawnTimer = surge != null || siege ? 0.22 : 0.33;
+        int want = (int) Math.min(MAX_ENEMIES, population(w.player) * (surge != null || siege ? 1.3 : 1)) - w.enemies.size();
         int shooters = 0;
         for (Enemy e : w.enemies) if (e.type == Enemy.Type.SHOOTER) shooters++;
         for (int i = 0; i < Math.min(3, want); i++) {
             Enemy.Type t = pickType();
             if (t == Enemy.Type.SHOOTER && shooters >= 8) t = Enemy.Type.GRUNT;
             if (t == Enemy.Type.SHOOTER) shooters++;
-            Util.Vec at = surge != null && rng.nextBoolean() ? around(w, surge.x, surge.y, Relay.RADIUS + 330, Relay.RADIUS + 520) : spawnPoint(w, 700, 950);
+            Util.Vec at = surge != null && rng.nextBoolean() ? around(w, surge.x, surge.y, Relay.RADIUS + 330, Relay.RADIUS + 520)
+                : ward != null && ward.targetable() && rng.nextDouble() < 0.4 ? around(w, ward.x, ward.y, 650, 900)
+                : spawnPoint(w, 700, 950);
             spawn(w, t, at.x(), at.y(), 1, 1);
         }
     }
@@ -298,6 +337,8 @@ final class Run {
     Enemy spawn(World w, Enemy.Type t, double x, double y, double hpBoost, double dmgBoost) {
         Enemy e = new Enemy(t, x, y, hpMult(w.player, t) * hpBoost, dmgMult(w.player) * dmgBoost, w.rng);
         e.spawnIn = 0.35;
+        boolean walker = t == Enemy.Type.GRUNT || t == Enemy.Type.RUNNER || t == Enemy.Type.BRUTE;
+        e.forWard = walker && ward != null && ward.targetable() && rng.nextDouble() < WARD_SHARE;
         w.enemies.add(e);
         return e;
     }
@@ -305,7 +346,7 @@ final class Run {
     /** Monsters left far behind are brought back round in front of you, so the pressure never just trails off. */
     private void relocateStragglers(World w) {
         for (Enemy e : w.enemies) {
-            if (e.type == Enemy.Type.BOSS || e.rooted() || e.elite || e.summoned) continue;
+            if (e.tough() || e.summoned || e.forWard) continue;
             if (Util.dist(e.x, e.y, w.player.x, w.player.y) < 1500) continue;
             Util.Vec at = spawnPoint(w, 700, 900);
             e.x = e.lastX = at.x();
@@ -363,6 +404,7 @@ final class Run {
         Util.Vec at = spawnPoint(w, 520, 640);
         Enemy e = spawn(w, t, at.x(), at.y(), t.small() ? 22 : 12, 1.5);
         e.elite = true;
+        e.forWard = false;
         e.spawnIn = 0.9;
         w.banner = "ELITE!";
         w.bannerTimer = 2;
@@ -378,7 +420,7 @@ final class Run {
         return switch (theme) {
             case FOREST -> switch (t) { case BRUTE -> "stump golem"; case SHOOTER -> "snap-bloom"; case RUNNER -> "blight fox"; default -> "thornling"; };
             case CITY -> switch (t) { case BRUTE -> "living dumpster"; case SHOOTER -> "security drone"; case RUNNER -> "alley cat"; default -> "sewer rat"; };
-            case LAB -> switch (t) { case BRUTE -> "flesh golem"; case SHOOTER -> "spitter"; case RUNNER -> "crawler"; default -> "experiment"; };
+            case LAB -> switch (t) { case BRUTE -> "mutant"; case SHOOTER -> "flask spitter"; case RUNNER -> "clockwork mouse"; default -> "ooze"; };
         };
     }
 
@@ -460,7 +502,7 @@ final class Run {
         w.soundAt(Snd.FIRE_EXPLODE, r.x, r.y, 0, 1, 0.8);
         for (Enemy e : w.enemies) {
             if (!e.targetable() || Util.dist(r.x, r.y, e.x, e.y) > 760) continue;
-            double big = e.type == Enemy.Type.BOSS || e.elite || e.rooted() ? e.maxHp * 0.15 : e.hp + 1;
+            double big = e.tough() ? e.maxHp * 0.15 : e.hp + 1;
             e.hurt(w, big, 0, 0, 0.3, RELAY_LIGHT, true, false);
         }
         for (int i = 0; i < 5; i++) drop(w, new Pickup(Pickup.Kind.GEM, r.x, r.y, 14 + (int) (2 * threat())));
@@ -475,6 +517,218 @@ final class Run {
             return;
         }
         goalMet(w);
+    }
+
+    // ------------------------------------------------------------------ specimens
+
+    static final Color SPECIMEN_GLOW = new Color(230, 90, 255), VINES = new Color(190, 90, 210);
+
+    /**
+     * Specimens sleep until something comes near. Awake, they fight like any brute; at every quarter of their health
+     * lost they shriek, shed a pack of oozes and mice, and bolt.
+     */
+    private void updateSpecimens(World w) {
+        Player p = w.player;
+        for (Enemy e : new ArrayList<>(w.enemies)) {                     // (the ones they shed join the list as we go)
+            if (!e.specimen || e.hp <= 0) continue;
+            if (!e.awake) {
+                if (Util.dist(e.x, e.y, p.x, p.y) > NEST_RANGE * 0.9 && e.hp >= e.maxHp) continue;
+                e.awake = true;
+                w.notice = "A SPECIMEN!";
+                w.noticeHint = "It bolts when it's hurt. Don't let it get away.";
+                w.noticeTimer = 3;
+                w.soundAt(Snd.BOSS_INTRO, e.x, e.y, 0, 0.6, 1.3);
+                w.effects.add(Effect.ring(e.x, e.y, 20, 160, 0.5, SPECIMEN_GLOW, false));
+            }
+            int due = (int) ((1 - e.hp / e.maxHp) * 4);
+            if (due <= e.molts || e.molts >= 3) continue;
+            e.molts++;
+            e.flee = 1.6;
+            w.shake = Math.max(w.shake, 5);
+            w.soundAt(Snd.BOSS_PHASE2_LAB, e.x, e.y, 0, 0.5, 1.4);
+            w.effects.add(Effect.ring(e.x, e.y, 30, 200, 0.5, SPECIMEN_GLOW, true));
+            for (int i = 0; i < 4 + (threat() > 6 ? 1 : 0); i++) {
+                double a = rng.nextDouble() * Math.PI * 2;
+                Util.Vec at = w.level.clamp(e.x + Math.cos(a) * 80, e.y + Math.sin(a) * 80, 16);
+                Enemy m = spawn(w, i % 2 == 0 ? Enemy.Type.GRUNT : Enemy.Type.RUNNER, at.x(), at.y(), 0.8, 1);
+                m.spawnIn = 0.4;
+            }
+        }
+    }
+
+    /** A specimen is down; with the last one, the way home opens. */
+    private void specimenDown(World w, Enemy e) {
+        nestsLeft--;
+        w.shake = Math.max(w.shake, 8);
+        w.effects.add(Effect.ring(e.x, e.y, 20, 240, 0.6, SPECIMEN_GLOW, true));
+        if (nestsLeft > 0) {
+            w.banner = "SPECIMEN DOWN";
+            w.bannerTimer = 2;
+            w.notice = (nestsTotal - nestsLeft) + " / " + nestsTotal + " SPECIMENS";
+            w.noticeHint = nestsLeft == 1 ? "One left." : nestsLeft + " left. Follow the arrows.";
+            w.noticeTimer = 3.5;
+            w.sound(Snd.ROOM_CLEAR);
+            return;
+        }
+        goalMet(w);
+    }
+
+    // ------------------------------------------------------------------ the ward: Copper, or the engine
+
+    /** A monster's blow lands on the ward. */
+    void hitWard(World w, double damage) {
+        if (ward == null || !ward.hurt(w, damage * WARD_DAMAGE)) return;
+        w.shake = Math.max(w.shake, 7);
+        w.soundAt(Snd.BOSS_SLAM_LAB, ward.x, ward.y, 0, 0.7, 1.3);
+        w.effects.add(Effect.ring(ward.x, ward.y, 10, 160, 0.5, new Color(255, 110, 80), true));
+        w.banner = ward.kind == Ward.Kind.ROBOT ? "COPPER IS DOWN!" : "THE ENGINE IS DOWN!";
+        w.bannerTimer = 2.2;
+        w.notice = ward.kind == Ward.Kind.ROBOT ? "Stand by him to get him going again" : "Stand by it to restart it. The charge is draining!";
+        w.noticeHint = "A few seconds right beside it. Clear them off first if you can.";
+        w.noticeTimer = 5;
+        if (ward.kind == Ward.Kind.ENGINE) ward.charge = Math.max(0, ward.charge - 0.08);
+        for (Enemy e : w.enemies) e.forWard = false;                     // nothing left to go for: they all turn on you
+    }
+
+    private void updateWard(World w, double dt) {
+        Ward wd = ward;
+        if (wd == null || nestsLeft <= 0) return;
+        Player p = w.player;
+        wd.flash = Math.max(0, wd.flash - dt);
+        wd.sinceHit += dt;
+        if (wd.broken) {                                                  // stand by it to get it going again
+            wd.moving = false;
+            boolean by = p.hp > 0 && Util.dist(p.x, p.y, wd.x, wd.y) < Ward.REPAIR_RANGE + wd.radius;
+            if (by) wd.repair += dt / Ward.REPAIR_TIME;
+            sparkTimer -= dt;
+            if (by && sparkTimer <= 0) {
+                sparkTimer = 0.15;
+                w.effects.add(Effect.spark(wd.x, wd.y - 30, rng.nextDouble() * Math.PI * 2, 120, 4, 0.3, Ward.COPPER_LIGHT));
+                w.soundAt(Snd.ZAP_HIT, wd.x, wd.y, 0, 0.5, 1.2);
+            }
+            if (wd.repair < 1) return;
+            wd.broken = false;
+            wd.hp = wd.maxHp * 0.5;
+            wd.sinceHit = 0;
+            w.notice = wd.kind == Ward.Kind.ROBOT ? "COPPER'S BACK UP" : "THE ENGINE IS RUNNING AGAIN";
+            w.noticeHint = wd.kind == Ward.Kind.ROBOT ? "Stay close and he'll roll on." : "Keep them off it.";
+            w.noticeTimer = 3;
+            w.sound(Snd.GUIDE_APPEAR);
+            w.effects.add(Effect.ring(wd.x, wd.y, 10, 140, 0.5, wd.kind == Ward.Kind.ROBOT ? Ward.COPPER_LIGHT : Ward.FROST, true));
+            return;
+        }
+        if (wd.sinceHit > Ward.MEND_AFTER) wd.hp = Math.min(wd.maxHp, wd.hp + wd.maxHp * Ward.MEND * dt);
+        if (wd.kind == Ward.Kind.ROBOT) updateRobot(w, dt);
+        else updateEngine(w, dt);
+    }
+
+    /** Copper rolls on while you're with him, stops to cut through each wall of vines, and makes for the junction. */
+    private void updateRobot(World w, double dt) {
+        Ward wd = ward;
+        Player p = w.player;
+        if (wd.work > 0) {
+            wd.moving = false;
+            wd.work -= dt;
+            sparkTimer -= dt;
+            if (sparkTimer <= 0) {
+                sparkTimer = 0.12;
+                double dir = wd.faceLeft ? -1 : 1;
+                for (int i = 0; i < 2; i++) w.effects.add(Effect.spark(wd.x + dir * 30, wd.y - 24, (dir > 0 ? 0 : Math.PI) + rng.nextGaussian() * 0.8, 160, 4, 0.35, Ward.COPPER_LIGHT));
+                if (rng.nextInt(3) == 0) w.soundAt(Snd.ZAP_HIT, wd.x, wd.y, 0, 0.45, 0.9);
+            }
+            if (wd.work > 0) return;
+            wd.nextStop++;
+            w.banner = "THROUGH!";
+            w.bannerTimer = 1.6;
+            w.notice = wd.nextStop < wd.stops.length ? "On to the next wall of vines" : "On to the junction";
+            w.noticeHint = "Stay close and he'll roll on.";
+            w.noticeTimer = 3;
+            w.sound(Snd.ROOM_CLEAR);
+            w.effects.add(Effect.ring(wd.x, wd.y, 20, 200, 0.5, VINES, true));
+            for (int i = 0; i < 4; i++) drop(w, new Pickup(Pickup.Kind.GEM, wd.x, wd.y, 14 + (int) (2 * threat())));
+            drop(w, new Pickup(Pickup.Kind.HEART, wd.x, wd.y, 0));
+            return;
+        }
+        wd.moving = p.hp > 0 && Util.dist(p.x, p.y, wd.x, wd.y) < Ward.FOLLOW;
+        if (!wd.moving) return;
+        double step = Ward.SPEED * dt;
+        if (wd.nextStop < wd.stops.length && wd.along + step >= wd.stops[wd.nextStop]) {
+            wd.advance(wd.stops[wd.nextStop] - wd.along);
+            wd.work = Ward.WORK_TIME;
+            wd.moving = false;
+            swarm(w, wd.x, wd.y);
+            if (wd.nextStop == wd.stops.length - 1) spawnElite(w);
+            w.banner = "VINES!";
+            w.bannerTimer = 1.6;
+            w.notice = "Copper's cutting through. Keep them off him!";
+            w.noticeHint = "It takes him a few seconds. They know it.";
+            w.noticeTimer = 4;
+            return;
+        }
+        wd.advance(step);
+        if (wd.along < wd.length - 0.5) return;
+        wd.moving = false;
+        nestsLeft = 0;
+        w.effects.add(Effect.ring(wd.x, wd.y, 20, 760, 0.6, Ward.COPPER_LIGHT, true));
+        goalMet(w);
+    }
+
+    /** The engine charges while it stands, chilling what comes near; its surges come at each third. */
+    private void updateEngine(World w, double dt) {
+        Ward wd = ward;
+        wd.charge = Math.min(1, wd.charge + dt / Ward.CHARGE_TIME);
+        chillTimer -= dt;
+        if (chillTimer <= 0) {                                            // the cold round it slows whatever comes near
+            chillTimer = 0.5;
+            for (Enemy e : w.enemies) if (e.targetable() && Util.dist(e.x, e.y, wd.x, wd.y) < Ward.CHILL) e.slow(0.55, 0.7);
+        }
+        int due = (int) (wd.charge * 3);
+        if (due > wd.surges && wd.surges < 2) {
+            wd.surges++;
+            swarm(w, wd.x, wd.y);
+            if (wd.surges == 2) spawnElite(w);
+            else {
+                w.banner = "SURGE!";
+                w.bannerTimer = 1.6;
+            }
+        }
+        if (wd.charge < 1) return;
+        nestsLeft = 0;
+        w.shake = Math.max(w.shake, 10);
+        w.effects.add(Effect.ring(wd.x, wd.y, 30, 900, 0.7, Ward.FROST, true));
+        w.effects.add(Effect.ring(wd.x, wd.y, 20, 300, 0.5, Color.WHITE, false));
+        w.soundAt(Snd.CAST_ICE, wd.x, wd.y);
+        for (Enemy e : w.enemies) {
+            if (!e.targetable() || Util.dist(wd.x, wd.y, e.x, e.y) > 900) continue;
+            e.hurt(w, e.tough() ? e.maxHp * 0.15 : e.hp + 1, 0, 0, 0.3, Ward.FROST, true, false);
+        }
+        goalMet(w);
+    }
+
+    // ------------------------------------------------------------------ the storm (Stormcliff)
+
+    /**
+     * Every few seconds lightning picks out spots round you (one close by): marked on the ground, struck a moment later.
+     * It hurts you if you're standing in one, and flattens any ordinary monster that is.
+     */
+    private void updateStorm(World w, double dt) {
+        if (w.level.theme != Theme.LAB || bossDead || ringActive) return;
+        stormTimer -= dt;
+        if (stormTimer > 0) return;
+        stormTimer = 7 + rng.nextDouble() * 4 - Math.min(2.5, threat() * 0.25);
+        Player p = w.player;
+        int n = 2 + (threat() > 5 ? 1 : 0);
+        for (int i = 0; i < n; i++) {
+            Util.Vec at = null;
+            for (int tries = 0; tries < 12 && at == null; tries++) {
+                double a = rng.nextDouble() * Math.PI * 2, d = i == 0 ? 60 + rng.nextDouble() * 180 : 200 + rng.nextDouble() * 450;
+                double x = p.x + Math.cos(a) * d, y = p.y + Math.sin(a) * d;
+                if (!w.level.contains(x, y)) continue;
+                if (ward != null && Util.dist(x, y, ward.x, ward.y) < 200) continue;   // the storm spares what you protect
+                at = new Util.Vec(x, y);
+            }
+            if (at != null) w.blasts.add(Blast.lightning(at.x(), at.y(), 1.3 + i * 0.3, p.maxHp * 0.12));
+        }
     }
 
     /** The last nest is down: everything ordinary drops its gem and vanishes, and the guardian arrives in a ring. */
@@ -498,7 +752,8 @@ final class Run {
             if (w.level.contains(bx, by)) at = new Util.Vec(bx, by);
         }
         if (at == null) at = w.level.clamp(ringX + 200, ringY, 50);
-        Enemy boss = new Enemy(Enemy.Type.BOSS, at.x(), at.y(), (0.85 + 0.35 * loops) * (1 + 0.05 * (p.level - 1)), 0.9 + 0.3 * loops, w.rng);
+        double toughness = challenge.theme == Theme.LAB ? MORROW_HP : 1;      // Morrow, the chapter's last stand, is far tougher
+        Enemy boss = new Enemy(Enemy.Type.BOSS, at.x(), at.y(), toughness * (0.85 + 0.35 * loops) * (1 + 0.05 * (p.level - 1)), 0.9 + 0.3 * loops, w.rng);
         w.enemies.add(boss);
         w.banner = w.level.bossName;
         w.bannerTimer = 3;
@@ -573,13 +828,14 @@ final class Run {
         if (e.elite) elitesKilled++;
         dropFor(w, e);
         if (e.type == Enemy.Type.NEST) nestDown(w, e);
+        if (e.specimen) specimenDown(w, e);
         if (e.type == Enemy.Type.BOSS) bossDown(w, e);
     }
 
     /** Its gem, maybe a coin or a heart, and a chest for an elite. A nest bursts into a shower of them. */
     private void dropFor(World w, Enemy e) {
         if (e.summoned) return;
-        if (e.type == Enemy.Type.NEST) {
+        if (e.type == Enemy.Type.NEST || e.specimen) {
             for (int i = 0; i < 6; i++) drop(w, new Pickup(Pickup.Kind.GEM, e.x, e.y, 14 + (int) (2 * threat())));
             for (int i = 0; i < 4; i++) drop(w, new Pickup(Pickup.Kind.COIN, e.x, e.y, 3 + rng.nextInt(4)));
             drop(w, new Pickup(Pickup.Kind.HEART, e.x, e.y, 0));
@@ -644,7 +900,13 @@ final class Run {
             bossWarning = BOSS_WARNING;
             w.banner = "THE GROUND SHAKES";
             w.bannerTimer = 3;
-            w.notice = "Every " + (challenge.goal == Challenge.Goal.RELAYS ? "relay is on" : "nest is down") + "... and something is coming";
+            w.notice = switch (challenge.goal) {
+                case RELAYS -> "Every relay is on";
+                case HUNT -> "Every specimen is down";
+                case ESCORT -> "Copper made it";
+                case DEFEND -> "The engine is charged";
+                default -> "Every nest is down";
+            } + "... and something is coming";
             w.noticeHint = "Get ready.";
             w.noticeTimer = BOSS_WARNING;
         } else {
@@ -708,7 +970,7 @@ final class Run {
         cachesOpened++;
         w.sound(Snd.CHEST_OPEN);
         chestBurst(w, cache.x, cache.y, new Color(255, 214, 90));
-        if (rng.nextDouble() < 0.35) findItem(w, Item.roll(rng, Item.rarity(rng, new double[]{40, 40, 17, 3, 0}), tier()));
+        if (rng.nextDouble() < 0.35) findItem(w, Item.roll(rng, Item.rarity(rng, Item.odds(challenge.world, Item.Source.CACHE, loops)), tier()));
         pendingChests++;
     }
 
@@ -795,7 +1057,7 @@ final class Run {
         w.effects.add(Effect.ring(p.x, p.y, 30, 760, 0.5, new Color(255, 170, 70), true));
         for (Enemy e : w.enemies) {
             if (!e.targetable() || Util.dist(p.x, p.y, e.x, e.y) > 760) continue;
-            double big = e.type == Enemy.Type.BOSS || e.elite || e.rooted() ? e.maxHp * 0.08 : e.hp + 1;
+            double big = e.tough() ? e.maxHp * 0.08 : e.hp + 1;
             e.hurt(w, big, 0, 0, 0.3, new Color(255, 170, 70), true, false);
         }
     }
@@ -806,7 +1068,7 @@ final class Run {
         w.sound(Snd.CHEST_OPEN);
         chestBurst(w, pk.x, pk.y, new Color(255, 214, 90));
         w.effects.add(Effect.text(pk.x, pk.y - 50, "+" + g + " GOLD", new Color(255, 214, 80), true));
-        if (rng.nextDouble() < 0.4) findItem(w, Item.roll(rng, Item.rarity(rng, new double[]{45, 35, 16, 4, 0}), tier()));
+        if (rng.nextDouble() < 0.4) findItem(w, Item.roll(rng, Item.rarity(rng, Item.odds(challenge.world, Item.Source.ELITE, loops)), tier()));
         pendingChests++;
     }
 
@@ -816,13 +1078,14 @@ final class Run {
         w.sound(Snd.CHEST_OPEN);
         chestBurst(w, pk.x, pk.y, new Color(255, 150, 60));
         w.effects.add(Effect.text(pk.x, pk.y - 50, "+" + g + " GOLD", new Color(255, 214, 80), true));
-        double[] odds = challenge.boss ? new double[]{5, 35, 40, 17, 3 + loops} : new double[]{30, 45, 20, 5, 0};
+        double[] odds = Item.odds(challenge.world, challenge.boss ? Item.Source.GUARDIAN : Item.Source.CHEST, loops);
         findItem(w, Item.roll(rng, Item.rarity(rng, odds), tier()));
         pendingChests++;
     }
 
     private void findItem(World w, Item it) {
         loot.add(it);
+        unseen.add(it);
         w.notice = "FOUND: " + it.name;
         w.noticeHint = it.rarity.label + " " + it.slot.label.toLowerCase() + "  -  yours to keep";
         w.noticeTimer = 5;
@@ -924,7 +1187,10 @@ final class Run {
         }
         w.sound(Snd.MENU_SELECT);
         if (choiceTitle.equals("LEVEL UP!")) pendingLevels--;
-        else pendingChests--;
+        else {
+            pendingChests--;
+            unseen.clear();
+        }
         p.invuln = Math.max(p.invuln, 0.4);
         w.state = World.State.PLAYING;
         maybeOpenChoices(w);
@@ -949,7 +1215,7 @@ final class Run {
             a.clears.merge(challenge.id, 1, Integer::sum);
             a.skillPoints += rewardSkillPoints;
             a.wins++;
-            a.restock();
+            a.restock(challenge.world);
         }
         prof.gold += gold + rewardGold;
         prof.add(loot);
@@ -1004,6 +1270,12 @@ final class Run {
     static String clock(double seconds) {
         int s = (int) seconds;
         return s / 60 + ":" + String.format(java.util.Locale.ROOT, "%02d", s % 60);
+    }
+
+    /** How far the goal has got, as the HUD and the results put it: "2 / 3", or for a ward "42%". */
+    String tally() {
+        if (ward != null) return (nestsLeft <= 0 ? 100 : (int) Math.floor(ward.progress() * 100)) + "%";
+        return (nestsTotal - nestsLeft) + " / " + nestsTotal;
     }
 
     /** The first pickup of a kind (for the HUD). */

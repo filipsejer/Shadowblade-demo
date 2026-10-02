@@ -48,6 +48,7 @@ final class Renderer {
         worldRenderer.draw(g, w, new Rectangle2D.Double(-ox, -oy, viewW, viewH));
 
         g.setTransform(screen);
+        drawWeather(g, w, width, height);
         g.drawImage(vignette(width, height), 0, 0, null);
         if (w.fade > 0) {                                   // arriving somewhere: fade in from black
             g.setColor(new Color(0, 0, 0, (int) (255 * Util.clamp(w.fade, 0, 1))));
@@ -83,6 +84,31 @@ final class Renderer {
             case RESULTS -> runHud.drawRunEnd(g, w, width, height);
             case ARMORY -> armoryScreen.draw(g, w, width, height);
             case PLAYING -> { }
+        }
+    }
+
+    /**
+     * Stormcliff's weather, over everything in the world: rain driving across the screen on the wind, and the white
+     * flash of lightning ({@link World#lightning}).
+     */
+    private void drawWeather(Graphics2D g, World w, int width, int height) {
+        if (w.level == null || w.level.theme != Theme.LAB || w.titleScene) return;
+        int n = width * height / 8000;
+        double t = w.time;
+        g.setStroke(new BasicStroke(1.3f));
+        for (int i = 0; i < n; i++) {
+            int h = FxArt.hash(i, 3, 17);
+            double speed = 820 + h % 380, len = 14 + h % 16, phase = (h >>> 8) % 1000;
+            double fall = (t * speed + phase * 7) % (height + 80) - 40;
+            double x = Math.floorMod((long) ((h >>> 4) % 4000 + fall * 0.32), width + 40) - 20;
+            int a = 40 + (h >>> 12) % 50;
+            g.setColor(new Color(176, 204, 240, a));
+            g.draw(new java.awt.geom.Line2D.Double(x, fall, x - len * 0.32, fall - len));
+        }
+        if (w.lightning > 0.01) {
+            double k = w.lightning * w.lightning;
+            g.setColor(new Color(214, 228, 255, (int) Math.round(105 * k)));
+            g.fillRect(0, 0, width, height);
         }
     }
 

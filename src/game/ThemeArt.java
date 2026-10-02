@@ -13,10 +13,10 @@ import java.util.Random;
 
 /**
  * The look of a level: floor tiles, walls, the void beyond them, scenery and the barriers over closed doors, all
- * painted in code. One {@link Theme} per level (the forest, the city). Tiles are painted at 16x16 art pixels and
- * scaled up to {@link #TILE} world units. The forest and the city are painted finer, to match the drawn sprites
- * ({@link ForestArt}, {@link CityArt}): their floors are large seamless textures ({@link #groundPaint} and friends)
- * instead of tiles.
+ * painted in code. One {@link Theme} per level (the forest, the city, Stormcliff). Their floors are painted at the
+ * drawn sprites' pixel size ({@link ForestArt}, {@link CityArt}, {@link LabArt}), as large seamless textures
+ * ({@link #groundPaint} and friends); only the guardian's floor and the door barriers are still 16x16 tiles, scaled up
+ * to {@link #TILE} world units.
  */
 final class ThemeArt {
     /** Size of one floor tile in world units (16 art pixels x the art scale). */
@@ -29,8 +29,7 @@ final class ThemeArt {
     final Theme theme;
     final BufferedImage[] ground, plaza, boss, path;    // floor tiles, several variants each
     final TexturePaint voidPaint, wallPaint, combatBarrier, sealedBarrier;
-    final Sprite[] floorProps, tall, low, facade;        // scenery: flat bits on the floor, tall things and low things
-                                                        // outside the walls, and things stuck onto the wall itself
+    final Sprite[] floorProps, tall, low;                // scenery: flat bits on the floor, tall things and low things outside the walls
     /** Seamless floor textures (grass, the safe rooms' paving, the paths between rooms), when the theme has them; null otherwise. */
     final TexturePaint groundPaint, plazaPaint, pathPaint;
     /** Big soft patches laid over the floor before anything else, to break up the texture's repeat (may be empty). */
@@ -59,7 +58,6 @@ final class ThemeArt {
                 floorProps = ForestArt.floor();
                 tall = ForestArt.tall();
                 low = ForestArt.low();
-                facade = new Sprite[0];
                 ambient = rgba(255, 244, 200, 14);
                 shade = rgb(18, 34, 20);
             }
@@ -78,28 +76,26 @@ final class ThemeArt {
                 floorProps = CityArt.floor();
                 tall = CityArt.facades();
                 low = CityArt.low();
-                facade = new Sprite[0];
                 ambient = rgba(20, 30, 90, 70);
                 shade = rgb(24, 22, 34);
             }
             default -> {
-                groundPaint = plazaPaint = pathPaint = null;
-                patches = new Sprite[0];
-                liveScenery = false;
-                ground = variants(8, ThemeArt::labFloor);
-                plaza = variants(4, ThemeArt::labLobby);
+                ground = plaza = path = new BufferedImage[0];          // (the textures below instead)
+                groundPaint = ForestArt.paint(LabArt.slate());
+                plazaPaint = ForestArt.paint(LabArt.tiles());
+                pathPaint = ForestArt.paint(LabArt.grating());
+                patches = LabArt.patches();
+                liveScenery = true;
                 boss = variants(6, ThemeArt::labBossFloor);
-                path = variants(4, ThemeArt::labGrating);
-                voidPaint = paint(labPipes(1));
-                wallPaint = paint(labWall(1));
+                voidPaint = ForestArt.paint(LabArt.sea());
+                wallPaint = ForestArt.paint(LabArt.seaWall());
                 combatBarrier = paint(laserGate(1));
                 sealedBarrier = paint(blastDoor(1));
-                floorProps = LabProps.floor();
-                tall = LabProps.tall();
-                low = LabProps.low();
-                facade = LabProps.facade();
-                ambient = rgba(30, 210, 170, 30);
-                shade = rgb(22, 44, 46);
+                floorProps = LabArt.floor();
+                tall = LabArt.facades();
+                low = LabArt.low();
+                ambient = rgba(16, 26, 72, 84);
+                shade = rgb(8, 14, 22);
             }
         }
     }
@@ -205,41 +201,7 @@ final class ThemeArt {
 
     // ------------------------------------------------------------------ laboratory tiles
 
-    /** Clean pale tiles with a faint blue cast, scuffed and stained. */
-    private static PixelCanvas labFloor(int seed) {
-        Random r = new Random(seed * 7919L + 21);
-        PixelCanvas c = new PixelCanvas(16, 16);
-        int grout = rgb(126, 150, 158);
-        c.rect(0, 0, 16, 16, grout);
-        for (int qy = 0; qy < 2; qy++) for (int qx = 0; qx < 2; qx++) {
-            int v = 206 + r.nextInt(14);
-            int col = rgb(v - 16, v, v + 4);
-            c.rect(qx * 8 + 1, qy * 8 + 1, 7, 7, col);
-            c.rect(qx * 8 + 1, qy * 8 + 1, 7, 1, lighten(col, 0.28));
-            c.rect(qx * 8 + 1, qy * 8 + 7, 7, 1, darken(col, 0.1));
-            for (int i = 0; i < 2; i++) c.set(qx * 8 + 1 + r.nextInt(7), qy * 8 + 1 + r.nextInt(7), darken(col, 0.09));
-        }
-        if (seed % 3 == 0) {                                                       // a stain of something green
-            int x = 2 + r.nextInt(10), y = 2 + r.nextInt(10);
-            c.set(x, y, rgb(150, 200, 130)); c.set(x + 1, y, rgb(134, 188, 120)); c.set(x, y + 1, rgb(134, 188, 120));
-        }
-        if (seed % 5 == 0) for (int i = 0; i < 5; i++) c.set(3 + i * 2, 3 + r.nextInt(3), rgb(150, 160, 164));   // scuffs
-        return c;
-    }
 
-    /** The lobby: a black and white checkerboard with a yellow hazard line. */
-    private static PixelCanvas labLobby(int seed) {
-        Random r = new Random(seed * 15485863L + 13);
-        PixelCanvas c = new PixelCanvas(16, 16);
-        for (int qy = 0; qy < 2; qy++) for (int qx = 0; qx < 2; qx++) {
-            int col = (qx + qy) % 2 == 0 ? rgb(226, 234, 236) : rgb(66, 82, 92);
-            c.rect(qx * 8, qy * 8, 8, 8, col);
-            c.rect(qx * 8, qy * 8, 8, 1, lighten(col, 0.18));
-            c.rect(qx * 8, qy * 8, 1, 8, lighten(col, 0.1));
-            c.set(qx * 8 + 2 + r.nextInt(5), qy * 8 + 2 + r.nextInt(5), darken(col, 0.1));
-        }
-        return c;
-    }
 
     /** The sanctum: dark steel plates with glowing green circuit traces. */
     private static PixelCanvas labBossFloor(int seed) {
@@ -262,44 +224,8 @@ final class ThemeArt {
         return c;
     }
 
-    /** Corridors: a metal grating edged with yellow and black. */
-    private static PixelCanvas labGrating(int seed) {
-        Random r = new Random(seed * 104729L + 19);
-        PixelCanvas c = new PixelCanvas(16, 16);
-        c.rect(0, 0, 16, 16, rgb(52, 64, 72));
-        for (int y = 1; y < 16; y += 3) c.rect(0, y, 16, 1, rgb(96, 112, 122));
-        for (int x = 0; x < 16; x += 4) c.rect(x, 0, 1, 16, rgb(38, 48, 54));
-        for (int i = 0; i < 4; i++) c.set(r.nextInt(16), r.nextInt(16), rgb(70, 84, 92));
-        for (int i = 0; i < 16; i++) if ((i / 2) % 2 == 0) { c.set(i, 0, rgb(232, 194, 54)); c.set(i, 15, rgb(232, 194, 54)); } else { c.set(i, 0, rgb(30, 32, 36)); c.set(i, 15, rgb(30, 32, 36)); }
-        return c;
-    }
 
-    /** Outside the walls: a dark tangle of pipes, ducts and cables. */
-    private static PixelCanvas labPipes(int seed) {
-        Random r = new Random(seed * 49979687L + 23);
-        PixelCanvas c = new PixelCanvas(16, 16);
-        c.rect(0, 0, 16, 16, rgb(20, 28, 34));
-        c.rect(0, 3, 16, 3, rgb(52, 68, 78)); c.rect(0, 3, 16, 1, rgb(96, 118, 130)); c.rect(0, 5, 16, 1, rgb(30, 40, 48));
-        c.rect(0, 10, 16, 2, rgb(42, 56, 64)); c.rect(0, 10, 16, 1, rgb(80, 98, 108));
-        c.rect(5, 0, 2, 16, rgb(46, 60, 70)); c.rect(5, 0, 1, 16, rgb(88, 108, 120));
-        c.rect(4, 2, 4, 1, rgb(120, 136, 146)); c.rect(4, 11, 4, 1, rgb(120, 136, 146));       // couplings
-        c.rect(12, 0, 1, 16, rgb(36, 50, 58));
-        c.set(9, 4, rgb(74, 230, 140)); c.set(13, 11, rgb(255, 90, 80));                         // status lights
-        for (int i = 0; i < 6; i++) c.set(r.nextInt(16), r.nextInt(16), rgb(28, 38, 46));
-        return c;
-    }
 
-    /** The wall face: teal panels with rivets and a hazard band. */
-    private static PixelCanvas labWall(int seed) {
-        PixelCanvas c = new PixelCanvas(16, 16);
-        int panel = rgb(82, 138, 148), panelL = rgb(126, 184, 190), panelD = rgb(48, 90, 102);
-        c.rect(0, 0, 16, 16, panelD);
-        c.rect(1, 1, 14, 6, panel); c.rect(1, 1, 14, 1, panelL);
-        c.rect(1, 9, 14, 6, panel); c.rect(1, 9, 14, 1, panelL);
-        for (int i = 0; i < 16; i++) c.set(i, 7, (i / 2) % 2 == 0 ? rgb(232, 194, 54) : rgb(30, 32, 36));   // hazard band
-        for (int[] p : new int[][]{{2, 2}, {13, 2}, {2, 10}, {13, 10}}) c.set(p[0], p[1], rgb(190, 214, 220));
-        return c;
-    }
 
     /** A closed door in a fight: a grid of red laser beams. */
     private static PixelCanvas laserGate(int seed) {

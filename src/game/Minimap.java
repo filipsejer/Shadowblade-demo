@@ -167,6 +167,25 @@ final class Minimap {
                 g.setColor(r.done ? Run.RELAY_LIGHT : r.started ? new Color(255, 170, 70) : new Color(170, 150, 120));
                 g.fill(new Ellipse2D.Double(r.x - rr, r.y - rr, 2 * rr, 2 * rr));
             }
+            Ward ward = w.run.ward;
+            if (ward != null) {                         // what you protect: Copper's route still ahead of him, and him (or the engine)
+                if (ward.kind == Ward.Kind.ROBOT && w.run.nestsLeft > 0) {
+                    java.awt.geom.Path2D route = new java.awt.geom.Path2D.Double();
+                    route.moveTo(ward.x, ward.y);
+                    for (double d = ward.along; d <= ward.length; d += 120) { Util.Vec v = ward.pointAt(d); route.lineTo(v.x(), v.y()); }
+                    Util.Vec end = ward.pointAt(ward.length);
+                    route.lineTo(end.x(), end.y());
+                    g.setStroke(new BasicStroke((float) (2.2 * px), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f, new float[]{(float) (4 * px), (float) (4 * px)}, 0));
+                    g.setColor(new Color(255, 190, 110, 170));
+                    g.draw(route);
+                    square(g, end.x(), end.y(), 4 * px, px, new Color(255, 214, 120));
+                }
+                double rr = 5.5 * px;
+                g.setColor(new Color(15, 20, 35));
+                g.fill(new Ellipse2D.Double(ward.x - rr - px, ward.y - rr - px, 2 * rr + 2 * px, 2 * rr + 2 * px));
+                g.setColor(ward.broken ? new Color(255, 110, 90) : ward.kind == Ward.Kind.ROBOT ? Ward.COPPER_LIGHT : Ward.FROST);
+                g.fill(new Ellipse2D.Double(ward.x - rr, ward.y - rr, 2 * rr, 2 * rr));
+            }
             for (Pickup pk : w.run.pickups) {
                 if (pk.kind == Pickup.Kind.CACHE) square(g, pk.x, pk.y, 3 * px, px, new Color(255, 214, 90));
                 else if (pk.kind == Pickup.Kind.PORTAL) square(g, pk.x, pk.y, 4 * px, px, new Color(200, 150, 255));
@@ -176,7 +195,7 @@ final class Minimap {
         Enemy locked = w.lockedTarget();
         for (Enemy e : w.enemies) {
             if (e.hp <= 0) continue;
-            boolean boss = e.type == Enemy.Type.BOSS || e.rooted();
+            boolean boss = e.type == Enemy.Type.BOSS || e.rooted() || e.specimen;
             double r = (boss ? 6 : 3.2) * px;
             if (e.intangible()) {                   // a shade in shadow mode: just a faint violet ring
                 g.setColor(new Color(170, 130, 235, 200));
@@ -184,7 +203,7 @@ final class Minimap {
                 g.draw(new Ellipse2D.Double(e.x - r, e.y - r, 2 * r, 2 * r));
                 continue;
             }
-            g.setColor(e.rooted() ? new Color(230, 100, 255) : boss ? new Color(255, 90, 110) : ENEMY);
+            g.setColor(e.rooted() || e.specimen ? new Color(230, 100, 255) : boss ? new Color(255, 90, 110) : ENEMY);
             g.fill(new Ellipse2D.Double(e.x - r, e.y - r, 2 * r, 2 * r));
             if (boss) {
                 g.setColor(Color.WHITE);

@@ -10,15 +10,15 @@ import java.util.List;
 
 /**
  * The explorable worlds: places to walk around between fights, with people to talk to, chests to find and the gates
- * to challenges. No monsters live here. Roads join them (see {@link Level.Road}): the Whispering Forest (chapter 1)
- * and the city of Lumen (chapter 2) so far.
+ * to challenges. No monsters live here. Roads join them (see {@link Level.Road}): the Whispering Forest (chapter 1),
+ * the city of Lumen (chapter 2) and Stormcliff, Doctor Morrow's laboratory on the sea cliffs (chapter 3).
  */
 final class Worlds {
     private Worlds() {}
 
     static final String FOREST = "forest", CITY = "city", LAB = "lab";
-    /** Every world, in the order the story reaches them (the lab is still to come). */
-    static final String[] IDS = {FOREST, CITY};
+    /** Every world, in the order the story reaches them. */
+    static final String[] IDS = {FOREST, CITY, LAB};
 
     static boolean exists(String id) {
         for (String w : IDS) if (w.equals(id)) return true;
@@ -29,21 +29,26 @@ final class Worlds {
     static Level of(String id) {
         return switch (id) {
             case CITY -> city();
+            case LAB -> lab();
             default -> forest();
         };
     }
 
     /** How you'd say you were going back there ("the forest"). */
-    static String home(String id) { return CITY.equals(id) ? "the city" : "the forest"; }
+    static String home(String id) {
+        return switch (id) { case CITY -> "the city"; case LAB -> "Stormcliff"; default -> "the forest"; };
+    }
 
     /** Who trains you there (spends your skill points). */
-    static String trainer(String id) { return CITY.equals(id) ? "Sable" : "Ranger Ash"; }
+    static String trainer(String id) {
+        return switch (id) { case CITY -> "Sable"; case LAB -> "Brass"; default -> "Ranger Ash"; };
+    }
 
     /** A world's name, as the main menu and the map write it. */
     static String title(String id) {
         return switch (id) {
             case CITY -> "Lumen, the City of Lamps";
-            case LAB -> "The Laboratory";
+            case LAB -> "Stormcliff, Morrow's Laboratory";
             default -> "The Whispering Forest";
         };
     }
@@ -233,6 +238,7 @@ final class Worlds {
         lv.treasures.add(new Level.Treasure("city.market", m.getMaxX() - 120, m.getMaxY() - 120, false));
         lv.landmarks.add(new Level.Landmark("lamp", m.x + 120, m.getMaxY() - 90, 12));
         lv.landmarks.add(new Level.Landmark("cart", m.getCenterX() + 260, m.getMaxY() - 150, 36));
+        lv.roads.add(new Level.Road(LAB, "THE COAST ROAD", m.getMaxX() - 90, m.getCenterY() + 40, m.getMaxX() - 220, m.getCenterY() + 40));
 
         // Clocktower Court: quiet, and the grandest chest in the city, with a spark of starlight beside it
         Rectangle2D.Double k = clock.bounds;
@@ -280,6 +286,108 @@ final class Worlds {
         lv.breakables.add(new Breakable(Breakable.Kind.CRATE, c.x + 260, c.getMaxY() - 90, 1));
         lv.breakables.add(new Breakable(Breakable.Kind.BARREL, a.getMaxX() - 220, a.getMaxY() - 120, 1));
         lv.breakables.add(new Breakable(Breakable.Kind.CRATE, y.getCenterX() + 170, y.getMaxY() - 140, 1));
+        return lv;
+    }
+
+    /**
+     * Stormcliff: Doctor Morrow's laboratory, bolted onto the sea cliffs up the coast from Lumen, in a storm that never
+     * ends. Lightning rods bristle from every roof; the rain comes in sideways.
+     * <pre>
+     *                          [ OBSERVATORY LIFT ]          (the gate to the Observatory)
+     *                                   |
+     *   [ THE GREENHOUSE ] ------ [  THE ATRIUM  ] ------ [ EAST WING DOORS ]   (the gates to the greenhouse and the east wing)
+     *                                   |
+     *   [ LIGHTNING GARDEN ] -- [ THE GATEHOUSE ] -- [ THE SEA WALL ]
+     *                                   |
+     *                            [ THE CLIFF ROAD ]          (the road back to Lumen)
+     * </pre>
+     */
+    static Level lab() {
+        Level.Builder b = new Level.Builder();
+        Level.Room atrium = b.start("THE ATRIUM", 1300, 950, Level.Room.State.SAFE);
+        Level.Room lift = b.attach(atrium, NORTH, "OBSERVATORY LIFT", 900, 700, Level.Room.State.SAFE);
+        Level.Room east = b.attach(atrium, EAST, "EAST WING DOORS", 1000, 760, Level.Room.State.OPEN);
+        Level.Room green = b.attach(atrium, WEST, "THE GREENHOUSE", 1100, 900, Level.Room.State.SAFE);
+        Level.Room gatehouse = b.attach(atrium, SOUTH, "THE GATEHOUSE", 1000, 700, Level.Room.State.OPEN);
+        Level.Room rods = b.attach(gatehouse, WEST, "LIGHTNING GARDEN", 1000, 760, Level.Room.State.OPEN);
+        Level.Room sea = b.attach(gatehouse, EAST, "THE SEA WALL", 1100, 640, Level.Room.State.OPEN);
+        Level.Room road = b.attach(gatehouse, SOUTH, "THE CLIFF ROAD", 900, 640, Level.Room.State.OPEN);
+        List<Level.Door> doors = b.finish(EDGE);
+
+        Rectangle2D.Double q = atrium.bounds;
+        Level lv = new Level(b.rooms, doors, q.getCenterX(), q.getCenterY() + 200, EDGE);
+        lv.name = "STORMCLIFF";
+        lv.world = LAB;
+        lv.theme = Theme.LAB;
+        lv.explorable = true;
+
+        // the atrium: Ilse by the orrery with Copper, Brass at his sparring post, Quill at the archive's counter
+        lv.landmarks.add(new Level.Landmark("orrery", q.getCenterX(), q.getCenterY() + 30, 70));
+        lv.npcs.add(new Level.Npc("ilse", "DOCTOR ILSE", "lab.ilse.idle", Level.Role.TALK, q.getCenterX() - 240, q.getCenterY() - 80));
+        lv.npcs.add(new Level.Npc("copper", "COPPER", "lab.copper.idle", Level.Role.TALK, q.getCenterX() - 130, q.getCenterY() - 60));
+        lv.npcs.add(new Level.Npc("brass", "BRASS", "shop.brass", Level.Role.TRAINER, q.x + 250, q.y + 210));
+        lv.npcs.add(new Level.Npc("quill", "QUILL", "shop.quill", Level.Role.MERCHANT, q.getMaxX() - 250, q.y + 210));
+        for (double[] p : new double[][]{{0.1, 0.7}, {0.9, 0.7}}) lv.landmarks.add(new Level.Landmark("planter.star", q.x + q.width * p[0], q.y + q.height * p[1], 26));
+        lv.landmarks.add(new Level.Landmark("bench.lab", q.x + 170, q.getMaxY() - 110, 30));
+        lv.landmarks.add(new Level.Landmark("tank", q.getMaxX() - 150, q.getMaxY() - 120, 28));
+
+        // the lift up to the Observatory, under the dome
+        Rectangle2D.Double l = lift.bounds;
+        lv.gates.add(new Level.Gate(Challenge.OBSERVATORY, l.getCenterX(), l.getCenterY() - 30));
+        lv.landmarks.add(new Level.Landmark("telescope", l.x + 150, l.y + 170, 20));
+        lv.landmarks.add(new Level.Landmark("coil", l.getMaxX() - 130, l.y + 150, 22));
+        lv.landmarks.add(new Level.Landmark("coil", l.x + 130, l.getMaxY() - 130, 22));
+        lv.treasures.add(new Level.Treasure("lab.spark", l.getMaxX() - 140, l.getMaxY() - 130, false));
+
+        // the east wing's doors: the way in for Copper, vines already pushing through
+        Rectangle2D.Double e = east.bounds;
+        lv.gates.add(new Level.Gate(Challenge.EAST_WING, e.getCenterX() + 120, e.getCenterY() - 20));
+        lv.landmarks.add(new Level.Landmark("tank", e.x + 160, e.y + 150, 28));
+        lv.landmarks.add(new Level.Landmark("crates", e.getMaxX() - 130, e.getMaxY() - 120, 34));
+        lv.landmarks.add(new Level.Landmark("cables", e.getCenterX() - 160, e.getMaxY() - 140, 0));
+        lv.landmarks.add(new Level.Landmark("bench.lab", e.x + 180, e.getMaxY() - 110, 30));
+
+        // the greenhouse: Fern among the star-plants, and the way into its overgrown half
+        Rectangle2D.Double g = green.bounds;
+        lv.npcs.add(new Level.Npc("fern", "FERN", "lab.fern.idle", Level.Role.TALK, g.getCenterX() + 150, g.getCenterY() + 60));
+        lv.gates.add(new Level.Gate(Challenge.GREENHOUSE, g.x + 260, g.getCenterY() - 60));
+        lv.treasures.add(new Level.Treasure("lab.greenhouse", g.getMaxX() - 140, g.y + 130, false));
+        for (double[] p : new double[][]{{0.12, 0.2}, {0.55, 0.18}, {0.85, 0.42}, {0.12, 0.85}, {0.45, 0.82}, {0.8, 0.86}}) {
+            lv.landmarks.add(new Level.Landmark("planter.star", g.x + g.width * p[0], g.y + g.height * p[1], 26));
+        }
+
+        // the gatehouse: where the road comes in
+        Rectangle2D.Double h = gatehouse.bounds;
+        lv.landmarks.add(new Level.Landmark("lamp", h.x + 160, h.y + 130, 12));
+        lv.landmarks.add(new Level.Landmark("lamp", h.getMaxX() - 160, h.y + 130, 12));
+        lv.landmarks.add(new Level.Landmark("crates", h.x + 140, h.getMaxY() - 120, 34));
+
+        // the lightning garden: a field of rods, struck all night long
+        Rectangle2D.Double r = rods.bounds;
+        for (double[] p : new double[][]{{0.18, 0.25}, {0.5, 0.2}, {0.82, 0.28}, {0.3, 0.55}, {0.7, 0.58}, {0.16, 0.82}, {0.5, 0.86}}) {
+            lv.landmarks.add(new Level.Landmark("rod", r.x + r.width * p[0], r.y + r.height * p[1], 10));
+        }
+        lv.treasures.add(new Level.Treasure("lab.rods", r.getCenterX() - 10, r.getCenterY() + 30, false));
+
+        // the sea wall: the breakers below, and the grandest chest on the cliff
+        Rectangle2D.Double w = sea.bounds;
+        lv.water.add(new Rectangle2D.Double(w.x, w.getMaxY() - 170, w.width, 170));
+        lv.treasures.add(new Level.Treasure("lab.seawall", w.getMaxX() - 160, w.y + 150, true));
+        lv.landmarks.add(new Level.Landmark("rod", w.x + 170, w.y + 140, 10));
+        lv.landmarks.add(new Level.Landmark("telescope", w.getCenterX(), w.y + 170, 20));
+
+        // the cliff road: the way back to Lumen, and a satchel someone lost in the rain
+        Rectangle2D.Double c = road.bounds;
+        lv.roads.add(new Level.Road(CITY, "THE COAST ROAD", c.getCenterX(), c.getMaxY() - 70, c.getCenterX(), c.getMaxY() - 190));
+        lv.treasures.add(new Level.Treasure("lab.road", c.x + 150, c.y + 140, false));
+        lv.landmarks.add(new Level.Landmark("lamp", c.getCenterX() - 170, c.getMaxY() - 130, 12));
+        lv.landmarks.add(new Level.Landmark("lamp", c.getCenterX() + 170, c.getMaxY() - 130, 12));
+
+        lv.breakables.add(new Breakable(Breakable.Kind.CRATE, e.x + 330, e.getCenterY() + 140, 1));
+        lv.breakables.add(new Breakable(Breakable.Kind.BARREL, h.getMaxX() - 300, h.getMaxY() - 140, 1));
+        lv.breakables.add(new Breakable(Breakable.Kind.CRATE, r.getMaxX() - 160, r.getMaxY() - 140, 1));
+        lv.breakables.add(new Breakable(Breakable.Kind.BARREL, g.getMaxX() - 260, g.getMaxY() - 140, 1));
+        lv.breakables.add(new Breakable(Breakable.Kind.CRATE, w.x + 320, w.y + 120, 1));
         return lv;
     }
 }

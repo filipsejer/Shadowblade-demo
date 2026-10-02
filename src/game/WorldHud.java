@@ -181,11 +181,15 @@ final class WorldHud {
         Color accent = new Color(255, 170, 90);
         double s = MenuStyle.scale(height), x0 = MenuStyle.left(width);
         double base = Math.max(96 * s, height * 0.5 - 260 * s);
-        boolean city = Worlds.CITY.equals(w.level.world);
-        Rectangle2D hb = MenuStyle.heading(g, city ? "SABLE" : "RANGER ASH", x0, base, 58 * s, s).getBounds2D();
+        String world = w.level.world;
+        Rectangle2D hb = MenuStyle.heading(g, Worlds.trainer(world).toUpperCase(), x0, base, 58 * s, s).getBounds2D();
         g.setFont(MenuStyle.serif(Font.ITALIC, 16 * s, 0));
-        MenuStyle.shadowed(g, city ? "\"Elegance is just efficiency with better manners. En garde.\"" : "\"Every fight teaches you something. Let's make it stick.\"",
-            hb.getMaxX() + 28 * s, base - 22 * s, new Color(214, 206, 228, 225));
+        String motto = switch (world) {
+            case Worlds.CITY -> "\"Elegance is just efficiency with better manners. En garde.\"";
+            case Worlds.LAB -> "\"PREPARE TO BE IMPROVED. RESISTANCE IS ADEQUATE.\"";
+            default -> "\"Every fight teaches you something. Let's make it stick.\"";
+        };
+        MenuStyle.shadowed(g, motto, hb.getMaxX() + 28 * s, base - 22 * s, new Color(214, 206, 228, 225));
         MenuStyle.label(g, "PERMANENT UPGRADES" + DOT + "FOR EVERY FIGHT", hb.getMaxX() + 28 * s, base - 2 * s, s, Util.alpha(accent, 0.95));
         points(g, String.valueOf(a.skillPoints), "SKILL POINTS", a.skillPoints > 0, width, base, s);
 
@@ -194,7 +198,7 @@ final class WorldHud {
         double top = base + 42 * s, bottom = Math.min(height - 62 * s, top + 470 * s), left = 40 * s, total = width - 80 * s, gap = 18 * s;
         double lw = total * 0.56, rw = total - lw - gap;
         MenuStyle.card(g, left, top, lw, bottom - top, null);
-        MenuStyle.label(g, city ? "WHAT SABLE TEACHES" : "WHAT ASH TEACHES", left + 20 * s, top + 28 * s, s, GOLD);
+        MenuStyle.label(g, "WHAT " + (Worlds.CITY.equals(world) ? "SABLE" : Worlds.LAB.equals(world) ? "BRASS" : "ASH") + " TEACHES", left + 20 * s, top + 28 * s, s, GOLD);
         double rowH = Math.min(52 * s, (bottom - top - 56 * s) / all.length), listTop = top + 42 * s;
         selectionBar(g, trainerGlide.step(sel, all.length, listTop + sel * rowH), left, lw, rowH, s);
         for (int i = 0; i < all.length; i++) {
@@ -221,7 +225,7 @@ final class WorldHud {
         double feet = top + 156 * s;
         g.setColor(new Color(0, 0, 0, 90));
         g.fill(new Ellipse2D.Double(cx - 58 * s, feet - 9 * s, 116 * s, 18 * s));
-        Art.frame(city ? "shop.duelist" : "shop.combat", w.time, 1.6).draw(g, cx, feet, 3 * s, false);
+        Art.frame(switch (world) { case Worlds.CITY -> "shop.duelist"; case Worlds.LAB -> "shop.brass"; default -> "shop.combat"; }, w.time, 1.6).draw(g, cx, feet, 3 * s, false);
         Mastery m = all[sel];
         int r = a.rank(m);
         g.setFont(MenuStyle.serif(Font.BOLD, 24 * s, 0.03));
@@ -255,10 +259,15 @@ final class WorldHud {
         Color accent = new Color(120, 220, 140);
         double s = MenuStyle.scale(height), x0 = MenuStyle.left(width);
         double base = Math.max(96 * s, height * 0.5 - 240 * s);
-        boolean city = Worlds.CITY.equals(w.level.world);
-        Rectangle2D hb = MenuStyle.heading(g, city ? "NIX'S NIGHT MARKET" : "BRAMBLE'S WARES", x0, base, 58 * s, s).getBounds2D();
+        String world = w.level.world;
+        String[] shop = switch (world) {
+            case Worlds.CITY -> new String[]{"NIX'S NIGHT MARKET", "\"No refunds. No questions. No rats. Well - few rats.\"", "Nix"};
+            case Worlds.LAB -> new String[]{"QUILL'S ARCHIVE", "\"Everything catalogued. Some of it even labelled correctly.\"", "Quill"};
+            default -> new String[]{"BRAMBLE'S WARES", "\"Gold for goods, goods for gold.\"", "Bramble"};
+        };
+        Rectangle2D hb = MenuStyle.heading(g, shop[0], x0, base, 58 * s, s).getBounds2D();
         g.setFont(MenuStyle.serif(Font.ITALIC, 16 * s, 0));
-        MenuStyle.shadowed(g, city ? "\"No refunds. No questions. No rats. Well - few rats.\"" : "\"Gold for goods, goods for gold.\"", hb.getMaxX() + 28 * s, base - 22 * s, new Color(214, 206, 228, 225));
+        MenuStyle.shadowed(g, shop[1], hb.getMaxX() + 28 * s, base - 22 * s, new Color(214, 206, 228, 225));
         MenuStyle.label(g, "NEW STOCK AFTER EVERY CLEARED CHALLENGE", hb.getMaxX() + 28 * s, base - 2 * s, s, Util.alpha(accent, 0.95));
         points(g, String.valueOf(w.profile.gold), "GOLD", true, width, base, s);
 
@@ -269,7 +278,7 @@ final class WorldHud {
         MenuStyle.label(g, "ON THE TABLE", left + 20 * s, top + 28 * s, s, GOLD);
         if (stock.isEmpty()) {
             g.setFont(MenuStyle.serif(Font.ITALIC, 16 * s, 0));
-            MenuStyle.shadowed(g, "Sold out! Clear a challenge and " + (city ? "Nix" : "Bramble") + " will find more.", left + 24 * s, top + 74 * s, DIM);
+            MenuStyle.shadowed(g, "Sold out! Clear a challenge and " + shop[2] + " will find more.", left + 24 * s, top + 74 * s, DIM);
             footer(g, w, x0, bottom + 36 * s, width, s, "Buy");
             return;
         }
@@ -299,17 +308,16 @@ final class WorldHud {
         MenuStyle.centred(g, it.name, cx, top + 128 * s, it.rarity.color);
         g.setFont(MenuStyle.caps(10 * s));
         MenuStyle.centred(g, (it.rarity.label + DOT + it.slot.label).toUpperCase(), cx, top + 148 * s, DIM);
-        double ly = top + 182 * s;
-        g.setFont(MenuStyle.sans(Font.PLAIN, 14 * s));
-        for (String line : it.lines()) {
-            MenuStyle.diamond(g, rx + 30 * s, ly - 5 * s, 3.5 * s, it.rarity.color);
-            MenuStyle.shadowed(g, line, rx + 42 * s, ly, TEXT);
-            ly += 22 * s;
+        Item worn = w.profile.equipped.get(it.slot);                        // its stats, each set against what you wear in this slot
+        double ay = bottom - 30 * s, ly = top + 182 * s;
+        double room = ay - 46 * s - ly - (it.unique != null ? 40 * s : 0);
+        ly = ItemCompare.draw(g, it, worn, rx + 26 * s, rx + rw - 26 * s, ly, Math.min(22 * s, room / Math.max(1, ItemCompare.lines(it, worn))), s);
+        if (it.unique != null) {
+            g.setFont(MenuStyle.serif(Font.ITALIC, 14 * s, 0));
+            ly = MenuStyle.wrap(g, it.unique.text, rx + 26 * s, ly + 2 * s, rw - 52 * s, 18 * s, new Color(255, 180, 90));
         }
-        Item worn = w.profile.equipped.get(it.slot);
         g.setFont(MenuStyle.serif(Font.ITALIC, 13 * s, 0));
-        MenuStyle.shadowed(g, worn == null ? "You wear nothing in this slot." : "You wear: " + worn.name + DOT + worn.lines().get(0), rx + 26 * s, ly + 14 * s, DIM);
-        double ay = bottom - 30 * s;
+        MenuStyle.shadowed(g, worn == null ? "You wear nothing in this slot." : "You wear: " + worn.name + (worn.upgrade > 0 ? " +" + worn.upgrade : ""), rx + 26 * s, ly + 10 * s, DIM);
         int price = Adventure.price(it);
         boolean ok = w.profile.gold >= price;
         MenuStyle.keyCap(g, "ENTER", rx + 26 * s, ay, s);
@@ -340,7 +348,13 @@ final class WorldHud {
         double startDanger = c.danger + loops * Challenge.LOOP_DANGER;
         String danger = startDanger < 2 ? "Easy" : startDanger < 4 ? "Medium" : startDanger < 6 ? "Hard" : "Very hard";
         String[][] facts = {
-            {c.goalWord(), c.goal == Challenge.Goal.RELAYS ? c.nests + DOT + "hold each one while it powers up" : String.valueOf(c.nests)},
+            {c.goalWord(), switch (c.goal) {
+                case RELAYS -> c.nests + DOT + "hold each one while it powers up";
+                case HUNT -> c.nests + DOT + "they bolt when they're hurt";
+                case ESCORT -> "Copper, to the far end" + DOT + c.nests + " walls of vines";
+                case DEFEND -> "the stasis engine, until it's charged";
+                default -> String.valueOf(c.nests);
+            }},
             {"GUARDIAN", c.boss ? "Yes: " + MenuStyle.titleCase(c.bossName) : "None"},
             {"DANGER AT THE START", danger + DOT + "rises every minute"},
             {"REWARD", loops == 0 ? c.gold + " gold" + DOT + c.skillPoints + " skill points" : (c.repeatGold + 20 * loops) + " gold" + (c.repeatSkillPoints > 0 ? DOT + c.repeatSkillPoints + " skill point" : "")},
@@ -425,6 +439,7 @@ final class WorldHud {
         g.setFont(MenuStyle.serif(Font.ITALIC, 16 * s, 0));
         String about = !open ? Story.roadShut(picked) : switch (picked) {
             case Worlds.CITY -> "Lumen, a city of lamps. They've flickered since a star fell into the Dynamo beneath it.";
+            case Worlds.LAB -> "Stormcliff, Doctor Morrow's laboratory on the sea cliffs, where the storm never moves on.";
             default -> "Mossbrook's woods, where the Blight first crept out of the Hollow.";
         };
         MenuStyle.wrap(g, about, x + 24 * s, y + 34 * s, cw - 48 * s, 20 * s, TEXT);
@@ -440,8 +455,8 @@ final class WorldHud {
 
     /** One world on the map: a lit globe with a glimpse of the place inside it (dark, with a "?", if the road is closed). */
     private void globe(Graphics2D g, World w, String id, double x, double y, double r, boolean open, double s) {
-        Color sky = switch (id) { case Worlds.CITY -> new Color(40, 50, 110); case Worlds.LAB -> new Color(30, 70, 70); default -> new Color(60, 110, 70); };
-        Color ground = switch (id) { case Worlds.CITY -> new Color(150, 130, 110); case Worlds.LAB -> new Color(90, 110, 116); default -> new Color(84, 128, 56); };
+        Color sky = switch (id) { case Worlds.CITY -> new Color(40, 50, 110); case Worlds.LAB -> new Color(26, 36, 64); default -> new Color(60, 110, 70); };
+        Color ground = switch (id) { case Worlds.CITY -> new Color(150, 130, 110); case Worlds.LAB -> new Color(54, 66, 82); default -> new Color(84, 128, 56); };
         if (!open) { sky = new Color(36, 34, 52); ground = new Color(50, 48, 66); }
         Ellipse2D ball = new Ellipse2D.Double(x - r, y - r, 2 * r, 2 * r);
         g.setColor(Util.alpha(open ? sky.brighter() : sky, 0.35));
@@ -465,6 +480,11 @@ final class WorldHud {
             fronts[0].draw(g, x - r * 0.42, y + r * 0.42, k, false);
             fronts[2].draw(g, x + r * 0.36, y + r * 0.42, k, false);
             Art.frames("landmark.lamp")[0].draw(g, x - r * 0.02, y + r * 0.6, k, false);
+        } else if (open && id.equals(Worlds.LAB)) {
+            Sprite[] fronts = ThemeArt.of(Theme.LAB).tall;
+            fronts[1].draw(g, x - r * 0.38, y + r * 0.42, k, false);
+            Art.frames("landmark.rod")[0].draw(g, x + r * 0.42, y + r * 0.5, k, false);
+            Art.frames("landmark.coil")[0].draw(g, x + r * 0.08, y + r * 0.62, k, false);
         }
         g.setRenderingHint(key, hint == null ? java.awt.RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR : hint);
         g.setClip(saved);

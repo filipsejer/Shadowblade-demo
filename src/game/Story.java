@@ -16,6 +16,13 @@ import java.util.Random;
  * the substation's power back before the tower's door will open. In the Warden's core, Juno finds new orders written
  * there by Doctor Morrow, who once ran the Dynamo and left for a laboratory on the cliffs: someone is gathering the
  * fallen stars, and planting them.
+ *
+ * <p>Chapter 3, Stormcliff: Morrow's laboratory, bolted onto the sea cliffs up the coast, in a storm that never ends.
+ * Doctor Ilse, his old assistant, is still there with Copper (her surveyor robot), Fern (who keeps the greenhouse),
+ * Brass (a sparring automaton) and Quill (the archivist). Morrow has shut himself in the Observatory with the biggest
+ * star of all. Copper has to be seen through the overgrown East Wing to get the lift running; then Ilse's stasis engine
+ * has to be kept standing beside the star long enough to freeze it; then Morrow himself. Beaten, he says he never made
+ * the stars fall: he only caught them. Something above is still throwing them down.
  */
 final class Story {
     private Story() {}
@@ -36,6 +43,7 @@ final class Story {
         if (!a.has("gift.hollow")) return "Return to Elder Rowan in Mossbrook";
         boolean inCity = a.world.equals(Worlds.CITY);
         if (!a.has("arrived.city")) return "Follow the south road from the Riverbank to the city";
+        if (a.has("juno.core")) return labObjective(a);
         String goal;
         if (!a.has("met.vell")) goal = "Find the captain of the Watch in Lantern Square";
         else if (!a.has("quest.substation")) goal = "Find Tinker Juno in the yard south of Lantern Square";
@@ -44,8 +52,21 @@ final class Story {
         else if (a.clears(Challenge.TOWER) == 0) goal = "Climb the Dynamo Tower: south of the yard, up the Dynamo Steps";
         else if (!a.has("gift.tower")) goal = "Return to Captain Vell in Lantern Square";
         else if (!a.has("juno.core")) goal = "Ask Tinker Juno what she found in the Warden";
-        else return "Chapter 2 complete. The story continues soon";
+        else return "Take the coast road, east of Market Row, to Stormcliff";
         return inCity ? goal : "Return to Lumen by the south road. " + goal;
+    }
+
+    /** What to do next once Lumen is lit: chapter 3, at Stormcliff. */
+    private static String labObjective(Adventure a) {
+        if (!a.has("arrived.lab")) return "Take the coast road, east of Lumen's Market Row, to Stormcliff";
+        String goal;
+        if (!a.has("met.ilse")) goal = "Get out of the rain: find whoever is left, in the atrium north of the gatehouse";
+        else if (a.clears(Challenge.EAST_WING) == 0) goal = "See Copper through the East Wing: the doors east of the atrium";
+        else if (!a.has("quest.observatory")) goal = "Report to Doctor Ilse in the atrium";
+        else if (a.clears(Challenge.OBSERVATORY) == 0) goal = "Ride the lift up to the Observatory, north of the atrium, and stop Morrow";
+        else if (!a.has("gift.observatory")) goal = "Return to Doctor Ilse in the atrium";
+        else return "Chapter 3 complete. The story continues soon";
+        return a.world.equals(Worlds.LAB) ? goal : "Return to Stormcliff by the coast road. " + goal;
     }
 
     /** Whether the road to a world is open yet. */
@@ -53,15 +74,18 @@ final class Story {
         return switch (world) {
             case Worlds.FOREST -> true;
             case Worlds.CITY -> a.has("gift.hollow");
+            case Worlds.LAB -> a.has("juno.core");
             default -> false;
         };
     }
 
     /** What you think, looking down a road that isn't open yet. */
     static String roadShut(String world) {
-        return world.equals(Worlds.CITY)
-            ? "The road south, out of the forest. Not yet - not with the Hollow still festering behind me."
-            : "The road runs on, but I've no reason to follow it yet.";
+        return switch (world) {
+            case Worlds.CITY -> "The road south, out of the forest. Not yet - not with the Hollow still festering behind me.";
+            case Worlds.LAB -> "The coast road, up to the cliffs and a storm that never seems to move on. Not yet - Lumen still needs me.";
+            default -> "The road runs on, but I've no reason to follow it yet.";
+        };
     }
 
     /** What you think at a challenge's gate before anyone has asked you in. */
@@ -72,14 +96,26 @@ final class Story {
             case ALLEYS -> "A rusted grate, and squeaking behind it. A lot of squeaking. Somebody round the canal must know about this.";
             case SUBSTATION -> "A heavy door with a lightning bolt painted on it, humming and locked. Whoever runs this yard would know how to open it.";
             case TOWER -> "The tower's great door is dark and sealed. There's no power in it at all.";
+            case GREENHOUSE -> "A glass door, fogged on the inside, and something big breathing behind it. Whoever keeps the greenhouse should know what's in there.";
+            case EAST_WING -> "The East Wing doors: chained shut, with vines pushing out through the gaps. Not without someone who knows the way.";
+            case OBSERVATORY -> "The lift up to the Observatory. Dead - not a spark of power in it.";
         };
     }
 
     /** Arriving in a world down its road: the first time in the city, a word as you walk in. */
     static void arrive(World w) {
         Adventure a = w.adventure;
+        if (a.world.equals(Worlds.LAB) && !a.has("arrived.lab")) {
+            a.set("arrived.lab");
+            a.restock(Worlds.LAB);                                     // Quill's table has the laboratory's leftovers on it
+            Dialogue d = w.dialogue;
+            d.say("YOU", HERO, Snd.TOWN_TALK, "Stormcliff. Rain coming in sideways, lightning every minute, and a laboratory bolted to the cliff like it's afraid of falling off.");
+            d.say("DOCTOR ILSE", "lab.ilse.idle", Snd.TOWN_TALK, "You, by the gate! Get inside before the next strike - up through the gatehouse, into the atrium!");
+            return;
+        }
         if (!a.world.equals(Worlds.CITY) || a.has("arrived.city")) return;
         a.set("arrived.city");
+        a.restock(Worlds.CITY);                                        // Nix's table has the city's goods on it
         Dialogue d = w.dialogue;
         d.say("YOU", HERO, Snd.TOWN_TALK, "So this is Lumen. Half the lamps are out, and the other half can't make up their minds.");
         d.say("CAPTAIN VELL", "city.vell.idle", Snd.TOWN_TALK, "You there, with the sword! Into the square, quickly - and keep out of the dark bits.");
@@ -98,6 +134,10 @@ final class Story {
             case "sable" -> !a.has("met.sable") || canTrain(a);
             case "nix" -> !a.has("met.nix");
             case "gus" -> !a.has("quest.alleys");
+            case "ilse" -> !a.has("met.ilse") || a.clears(Challenge.EAST_WING) > 0 && !a.has("quest.observatory") || a.clears(Challenge.OBSERVATORY) > 0 && !a.has("gift.observatory");
+            case "fern" -> !a.has("quest.greenhouse");
+            case "brass" -> !a.has("met.brass") || canTrain(a);
+            case "quill" -> !a.has("met.quill");
             default -> false;
         };
     }
@@ -138,6 +178,8 @@ final class Story {
                 } else if (a.clears(Challenge.HOLLOW) > 0 && !a.has("gift.hollow")) {
                     important = true;
                     giveGift(w, n, p);
+                } else if (a.has("gift.observatory")) {
+                    d.say(n, p, Snd.TOWN_TALK, "The nights are quieter. Fewer stars falling, the scouts say. Whatever you did up on those cliffs, the forest felt it.");
                 } else if (a.has("gift.tower")) {
                     d.say(n, p, Snd.TOWN_TALK, "News reaches even Mossbrook. They say every lamp in Lumen is lit again. That was you, wasn't it?");
                 } else if (a.has("gift.hollow")) {
@@ -235,6 +277,8 @@ final class Story {
                 } else if (a.clears(Challenge.TOWER) > 0 && !a.has("gift.tower")) {
                     important = true;
                     giveCityGift(w, n, p);
+                } else if (a.has("arrived.lab")) {
+                    d.say(n, p, Snd.TOWN_TALK, "Stormcliff, eh? Lumen's sailors won't go near it. They say the lightning there falls upward. Mind yourself up there.");
                 } else if (a.has("gift.tower")) {
                     d.say(n, p, Snd.TOWN_TALK, "Every lamp in Lumen is lit, and my watch can walk the streets again. Whatever you need here, it's yours.");
                 } else if (a.has("quest.tower")) {
@@ -265,12 +309,15 @@ final class Story {
                     d.say(n, p, Snd.TOWN_TALK, "Look at this. The Warden's core. Somebody opened it up and wrote new orders into it. See, scratched right here: GUARD THE GARDEN.");
                     d.say(n, p, Snd.TOWN_TALK, "That's not the Watch's hand. Those are the marks of Doctor Morrow, who ran the Dynamo before me. Brilliant. Strange. He left Lumen years ago, for a laboratory up on the cliffs.");
                     d.say("YOU", HERO, Snd.TOWN_TALK, "The hermit in the forest said something was planting the stars. Like seeds.");
-                    d.say(n, p, Snd.TOWN_TALK, "Then the stars didn't just fall, Spellblade. Somebody is gathering them and planting them. And I think I know who the gardener is.", () -> {
+                    d.say(n, p, Snd.TOWN_TALK, "Then the stars didn't just fall, Spellblade. Somebody is gathering them and planting them. And I think I know who the gardener is.");
+                    d.say(n, p, Snd.TOWN_TALK, "Morrow's laboratory is up the coast, at Stormcliff. Take the coast road, east of Market Row. And say hello to Ilse for me, if she's still up there.", () -> {
                         w.notice = "CHAPTER 2 COMPLETE";
-                        w.noticeHint = "Lumen is bright again. The story continues soon.";
+                        w.noticeHint = "The coast road, east of Market Row, leads to Morrow's laboratory at Stormcliff.";
                         w.noticeTimer = 7;
                         w.sound(Snd.GAME_CLEARED);
                     });
+                } else if (a.has("gift.observatory")) {
+                    d.say(n, p, Snd.TOWN_TALK, "Ilse wrote! Three pages about a stasis engine and one line about you. 'Brave, and terrible at waiting.' High praise, from her.");
                 } else if (a.has("juno.core")) {
                     d.say(n, p, Snd.TOWN_TALK, "If you go after Morrow, take a lamp. And come back. Lumen still needs someone who can fight its bins.");
                 } else if (a.clears(Challenge.SUBSTATION) > 0 && a.clears(Challenge.TOWER) == 0) {
@@ -323,9 +370,128 @@ final class Story {
                     d.say(n, p, Snd.TOWN_TALK, "Three nests, back of the Alley Mouth. Mind your ankles.");
                 }
             }
+            default -> important = talkLab(w, npc);
+        }
+        return important;
+    }
+
+    /** The people of Stormcliff (see {@link #talk}). */
+    private static boolean talkLab(World w, Level.Npc npc) {
+        Adventure a = w.adventure;
+        Dialogue d = w.dialogue;
+        String n = npc.name(), p = npc.portrait();
+        boolean important = false;
+        switch (npc.id()) {
+            case "ilse" -> {
+                if (!a.has("met.ilse")) {
+                    important = true;
+                    a.set("met.ilse");
+                    a.set("quest.eastwing");
+                    d.say(n, p, Snd.TOWN_TALK, "Doctor Ilse Varga. I was Morrow's assistant, before... all this. You came from Lumen? Then you've seen what a fallen star does when it's left to grow.");
+                    d.say(n, p, Snd.TOWN_TALK, "Morrow didn't make the stars fall. But he's been collecting the pieces. He calls them seeds. He plants them, and the Blight is what grows.");
+                    d.say(n, p, Snd.TOWN_TALK, "He's shut himself in the Observatory at the top of the cliff, with the biggest star of all. And the lift's dead: its power runs through the East Wing, and the East Wing is... overgrown.");
+                    d.say("YOU", HERO, Snd.TOWN_TALK, "Then I'll cut my way through it.");
+                    d.say(n, p, Snd.TOWN_TALK, "Not you. Copper. He's my surveyor; he can rewire the junction at the far end. He's brave and he's slow, and the things in there will tear him apart.");
+                    d.say(n, p, Snd.TOWN_TALK, "Stay close to him. He won't go on alone, and he'll have to stop and cut through the vines. Keep them off him while he does.", () -> {
+                        w.notice = "NEW QUEST: THE EAST WING";
+                        w.noticeHint = "The doors east of the atrium. Copper only moves while you're beside him.";
+                        w.noticeTimer = 6;
+                        w.sound(Snd.GUIDE_APPEAR);
+                    });
+                } else if (a.clears(Challenge.EAST_WING) > 0 && !a.has("quest.observatory")) {
+                    important = true;
+                    a.set("quest.observatory");
+                    d.say(n, p, Snd.TOWN_TALK, "The lift's running! Copper is going to be insufferable about it for weeks.");
+                    d.say(n, p, Snd.TOWN_TALK, "Listen. I built something: a stasis engine. Run it long enough beside the star and it'll freeze it solid, roots and all. No more seeds.");
+                    d.say(n, p, Snd.TOWN_TALK, "It needs time to charge, and Morrow will throw everything he has at it. If it's knocked out, stand by it and it'll restart, but it loses charge.");
+                    d.say(n, p, Snd.TOWN_TALK, "Keep it standing until it's done. Then... Morrow. Bring him back, if there's anything left to bring.", () -> {
+                        w.notice = "NEW QUEST: THE OBSERVATORY";
+                        w.noticeHint = "The lift north of the atrium.";
+                        w.noticeTimer = 5;
+                        w.sound(Snd.GUIDE_APPEAR);
+                    });
+                } else if (a.clears(Challenge.OBSERVATORY) > 0 && !a.has("gift.observatory")) {
+                    important = true;
+                    giveLabGift(w, n, p);
+                } else if (a.has("gift.observatory")) {
+                    d.say(n, p, Snd.TOWN_TALK, "The star sleeps, Morrow sleeps, and I've a laboratory to tidy. Whatever's up there throwing stars, we'll be ready for it. Come back soon.");
+                } else if (a.has("quest.observatory")) {
+                    d.say(n, p, Snd.TOWN_TALK, "The lift, north of here. Keep the engine standing - if it goes down, stand by it to restart it. Go.");
+                } else {
+                    d.say(n, p, Snd.TOWN_TALK, "The East Wing doors, east of here. Copper only rolls on while you're with him. And he stops for the vines; that's when they'll come.");
+                }
+            }
+            case "copper" -> {
+                a.set("met.copper");
+                if (a.has("gift.observatory")) d.say(n, p, Snd.ROBOT_TALK, "[Copper plays you a tune he has clearly been practising, and bows. Then he bows again, in case you missed it.]");
+                else if (a.clears(Challenge.EAST_WING) > 0) d.say(n, p, Snd.ROBOT_TALK, "[Copper spins round on his treads, lights flashing, and plays a triumphant little fanfare. Twice.]");
+                else if (a.has("met.ilse")) d.say(n, p, Snd.ROBOT_TALK, "[Copper points at the East Wing doors, then at you, then hides behind Ilse. Then comes out again, bravely.]");
+                else d.say(n, p, Snd.ROBOT_TALK, "BEEP? [Copper's lamp blinks at you, curious, then swivels anxiously toward Ilse.]");
+            }
+            case "fern" -> {
+                if (a.clears(Challenge.GREENHOUSE) > 0) {
+                    d.say(n, p, Snd.TOWN_TALK, "The greenhouse is quiet. Mostly. Things keep hatching in the beds - you know how it is. The pay holds, if you're bored.");
+                } else if (!a.has("quest.greenhouse")) {
+                    important = true;
+                    a.set("quest.greenhouse");
+                    d.say(n, p, Snd.TOWN_TALK, "Shh! Don't step on the - oh, never mind, it's dead. I'm Fern. I keep the greenhouse. Kept.");
+                    d.say(n, p, Snd.TOWN_TALK, "Morrow's specimens broke out of their tanks and went to ground in the back half, among the star-plants. Four of them. Big ones.");
+                    d.say(n, p, Snd.TOWN_TALK, "They sleep till you get close. Hurt one and it bolts, shedding little horrors as it goes. Hunt them down and I'll pay you in coin. And cuttings.", () -> {
+                        w.notice = "NEW QUEST: THE GREENHOUSE";
+                        w.noticeHint = "The fogged glass door, here in the greenhouse.";
+                        w.noticeTimer = 5;
+                        w.sound(Snd.GUIDE_APPEAR);
+                    });
+                } else {
+                    d.say(n, p, Snd.TOWN_TALK, "Four specimens. Wake them, chase them, don't let them get away. They're quicker than they look when they're scared.");
+                }
+            }
+            case "brass" -> {
+                if (!a.has("met.brass")) {
+                    a.set("met.brass");
+                    d.say(n, p, Snd.ROBOT_TALK, "BRASS. SPARRING AUTOMATON, MARK FOUR. I HAVE DEFEATED EVERY ASSISTANT IN THIS LABORATORY. AND ONE GOAT.");
+                    d.say(n, p, Snd.ROBOT_TALK, "ASH AND SABLE HAVE FILED REPORTS ON YOU. THEY SAY: ADEQUATE. BRING ME SKILL POINTS AND WE WILL MAKE YOU MORE THAN ADEQUATE. TALK TO ME AGAIN TO TRAIN.");
+                } else {
+                    w.openTrainer();
+                }
+            }
+            case "quill" -> {
+                if (!a.has("met.quill")) {
+                    a.set("met.quill");
+                    d.say(n, p, Snd.TOWN_TALK, "Quill. Archivist, and purveyor of the laboratory's leftovers. Morrow never threw anything away; I simply... redistribute it.");
+                    d.say(n, p, Snd.TOWN_TALK, "The same supplier as Nix and Bramble? Heavens, no. My stock is considerably better. New pieces whenever you've cleared something out. Talk to me again to browse.");
+                } else {
+                    w.openShop();
+                }
+            }
             default -> d.say(n, p, Snd.TOWN_TALK, "...");
         }
         return important;
+    }
+
+    /** Stormcliff's thanks: Morrow's goggles, gold and skill points, and the question the chapter ends on. */
+    private static void giveLabGift(World w, String n, String p) {
+        Adventure a = w.adventure;
+        Dialogue d = w.dialogue;
+        a.set("gift.observatory");
+        Item roll = Item.roll(new Random(79), Item.Slot.HELM, Item.Rarity.EPIC, 3);
+        Item goggles = new Item(roll.slot, roll.rarity, "Morrow's Goggles", roll.tier, roll.stats, null, 0);
+        d.say(n, p, Snd.TOWN_TALK, "The star's asleep. Frozen solid, like a lump of blue glass. And Morrow... he's sleeping too. Copper's sitting with him.");
+        d.say("YOU", HERO, Snd.TOWN_TALK, "He said he never made them fall. He only caught them. And that something up there is still throwing them down.");
+        d.say(n, p, Snd.TOWN_TALK, "...Then we have work to do. But not tonight. Take these: his goggles. He'd want them to look at something worth seeing.", () -> {
+            w.profile.add(List.of(goggles));
+            w.profile.gold += 450;
+            a.skillPoints += 5;
+            w.notice = "GIFT: " + goggles.name.toUpperCase();
+            w.noticeHint = "Epic helm" + MenuStyle.DOT + "+450 gold" + MenuStyle.DOT + "+5 skill points";
+            w.noticeTimer = 6;
+            w.sound(Snd.GAME_CLEARED);
+        });
+        d.say(n, p, Snd.TOWN_TALK, "Whatever's up there, it's watching the places the stars landed. The forest, Lumen, here. We'll find out where it is. Together, I hope.", () -> {
+            w.notice = "CHAPTER 3 COMPLETE";
+            w.noticeHint = "The star is frozen. Something above still throws them down. The story continues soon.";
+            w.noticeTimer = 7;
+        });
     }
 
     /** Lumen's thanks for the tower: a saber the Watch had made, skill points, gold, and a word that Juno found something. */
@@ -353,7 +519,7 @@ final class Story {
         Adventure a = w.adventure;
         Dialogue d = w.dialogue;
         a.set("gift.hollow");
-        Item roll = Item.roll(new Random(77), Item.Slot.RING, Item.Rarity.EPIC, 1);
+        Item roll = Item.roll(new Random(77), Item.Slot.RING, Item.Rarity.UNCOMMON, 1);
         Item charm = new Item(roll.slot, roll.rarity, "Mossbrook Charm", roll.tier, roll.stats, null, 0);
         d.say(n, p, Snd.TOWN_TALK, "The Hollow is quiet. For the first time since the stars fell, the birds are singing in it.");
         d.say(n, p, Snd.TOWN_TALK, "The whole camp made something for you. Wear it, and remember there's a place in Mossbrook for you.", () -> {
@@ -361,7 +527,7 @@ final class Story {
             w.profile.gold += 200;
             a.skillPoints += 3;
             w.notice = "GIFT: " + charm.name.toUpperCase();
-            w.noticeHint = "Epic ring" + MenuStyle.DOT + "+200 gold" + MenuStyle.DOT + "+3 skill points";
+            w.noticeHint = "Uncommon ring" + MenuStyle.DOT + "+200 gold" + MenuStyle.DOT + "+3 skill points";
             w.noticeTimer = 6;
             w.sound(Snd.GAME_CLEARED);
         });
@@ -387,6 +553,12 @@ final class Story {
             w.dialogue.shout("YOU", "", HERO, Snd.TOWN_TALK, "The lamps are steady. Captain Vell will have seen that.");
         } else if (c == Challenge.TOWER && !w.adventure.has("gift.tower")) {
             w.dialogue.shout("YOU", "", HERO, Snd.TOWN_TALK, "The Warden's down and the Dynamo's quiet. Back to the Captain.");
+        } else if (c == Challenge.GREENHOUSE && w.adventure.clears(c) == 1) {
+            w.dialogue.shout("FERN", "(from among the planters)", "lab.fern.idle", Snd.TOWN_TALK, "Was that the last of them? Oh, well done! Oh - my poor star-tomatoes.");
+        } else if (c == Challenge.EAST_WING && !w.adventure.has("quest.observatory")) {
+            w.dialogue.shout("YOU", "", HERO, Snd.TOWN_TALK, "Copper's through and the lift is humming. Ilse will want to know.");
+        } else if (c == Challenge.OBSERVATORY && !w.adventure.has("gift.observatory")) {
+            w.dialogue.shout("YOU", "", HERO, Snd.TOWN_TALK, "The star's frozen, and Morrow's done. Back to Ilse.");
         }
     }
 
@@ -399,16 +571,21 @@ final class Story {
         return switch (id) {
             case "path" -> new Find(50, null, 0, "A scout's purse, dropped on the path.");
             case "mushroom" -> new Find(20, Item.Rarity.UNCOMMON, 0, "Hidden in the middle of the mushroom ring.");
-            case "thicket" -> new Find(0, Item.Rarity.RARE, 0, "Wedged between the roots, far from any path.");
+            case "thicket" -> new Find(0, Item.Rarity.UNCOMMON, 0, "Wedged between the roots, far from any path.");
             case "river" -> new Find(80, null, 0, "Washed up and wedged in the reeds.");
             case "seed" -> new Find(0, null, 1, "A glowing seed of the old forest. Ash will know what it's worth.");
             case "shrine" -> new Find(150, Item.Rarity.UNCOMMON, 0, "An offering left at the shrine, long ago.");
             case "city.gate" -> new Find(60, null, 0, "A traveller's purse, dropped in a hurry.");
-            case "city.market" -> new Find(40, Item.Rarity.UNCOMMON, 0, "Under a stall, behind the turnips.");
-            case "city.clock" -> new Find(150, Item.Rarity.RARE, 0, "Wedged in the clock's stopped gears.");
+            case "city.market" -> new Find(40, Item.Rarity.RARE, 0, "Under a stall, behind the turnips.");
+            case "city.clock" -> new Find(150, Item.Rarity.EPIC, 0, "Wedged in the clock's stopped gears.");
             case "city.spark" -> new Find(0, null, 1, "A spark of starlight, still warm. Sable will know what it's worth.");
             case "city.alley" -> new Find(90, null, 0, "Somebody's savings, stuffed up a drainpipe.");
-            case "city.yard" -> new Find(0, Item.Rarity.UNCOMMON, 0, "A spare part from Juno's bench. Well, it was spare.");
+            case "city.yard" -> new Find(0, Item.Rarity.RARE, 0, "A spare part from Juno's bench. Well, it was spare.");
+            case "lab.road" -> new Find(80, null, 0, "A courier's satchel, soaked right through.");
+            case "lab.rods" -> new Find(0, Item.Rarity.RARE, 0, "Fused to the foot of a lightning rod. Still warm.");
+            case "lab.greenhouse" -> new Find(60, Item.Rarity.RARE, 0, "Buried in a planter, roots and all.");
+            case "lab.seawall" -> new Find(200, Item.Rarity.EPIC, 0, "Lashed to the sea wall, above the breakers.");
+            case "lab.spark" -> new Find(0, null, 1, "A sliver of starlight, humming. Brass will know what it's worth.");
             default -> new Find(10, null, 0, "");
         };
     }

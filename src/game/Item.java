@@ -37,13 +37,18 @@ final class Item {
     enum Rarity {
         COMMON("Common", new Color(190, 190, 196), 1, 1.0, new String[]{"Worn", "Plain", "Old"}),
         UNCOMMON("Uncommon", new Color(110, 220, 110), 2, 1.25, new String[]{"Sturdy", "Keen", "Solid"}),
-        RARE("Rare", new Color(90, 160, 255), 2, 1.6, new String[]{"Runed", "Gleaming", "Tempered"}),
-        EPIC("Epic", new Color(190, 110, 255), 3, 2.0, new String[]{"Arcane", "Stormforged", "Radiant"}),
-        LEGENDARY("Legendary", new Color(255, 170, 50), 3, 2.5, new String[]{""});
+        RARE("Rare", new Color(90, 160, 255), 3, 1.6, new String[]{"Runed", "Gleaming", "Tempered"}),
+        EPIC("Epic", new Color(190, 110, 255), 4, 2.0, new String[]{"Arcane", "Stormforged", "Radiant"}),
+        LEGENDARY("Legendary", new Color(255, 170, 50), 4, 2.5, new String[]{""});
 
         final String label;
         final Color color;
+        /** How many stat lines it rolls (the slot's own stat, then random others). */
         final int stats;
+        /**
+         * What its stats are multiplied by. The rolls only spread {@value Item#SPREAD} either side of the middle, so at
+         * the same tier and upgrade level a rarer item always rolls higher than a less rare one.
+         */
         final double mult;
         final String[] prefixes;
 
@@ -85,8 +90,14 @@ final class Item {
         /** "+12% Melee damage", "-4% Damage taken", "+0.6 HP regen / s". */
         String format(double v) {
             boolean minus = this == ARMOR || this == COOLDOWN;
-            String num = v >= 10 || percent ? String.valueOf(Math.round(v)) : String.format(Locale.ROOT, "%.1f", v);
-            return (minus ? "-" : "+") + num + (percent ? "% " : " ") + label;
+            return (minus ? "-" : "+") + number(v) + (percent ? "% " : " ") + label;
+        }
+
+        /** Just the amount, as {@link #format} shows it: "12%", "0.6", "38". */
+        String amount(double v) { return number(v) + (percent ? "%" : ""); }
+
+        private String number(double v) {
+            return v >= 10 || percent ? String.valueOf(Math.round(v)) : String.format(Locale.ROOT, "%.1f", v);
         }
     }
 
@@ -183,9 +194,53 @@ final class Item {
         return new Item(slot, rarity, name, tier, stats, unique, 0);
     }
 
+    /** How far a roll strays from the middle of a stat's range (a fraction of it, either way). */
+    static final double SPREAD = 0.1;
+
     private static double rollValue(Random rng, Stat s, Rarity r, int tier) {
-        double v = s.lo + rng.nextDouble() * (s.hi - s.lo);
+        double v = (s.lo + s.hi) / 2 * (1 + SPREAD * (rng.nextDouble() * 2 - 1));
         return Math.round(v * r.mult * (1 + 0.25 * tier) * 10) / 10.0;
+    }
+
+    /** Where an item comes from, for {@link #odds}. */
+    enum Source { CACHE, ELITE, CHEST, GUARDIAN, SHOP }
+
+    /**
+     * How likely each rarity is (weights, common first) for an item from {@code source} in {@code world}. The forest
+     * only gives commons and uncommons; the city gives mostly uncommons and rares, with epics now and then and, from
+     * a guardian, the odd legendary; Stormcliff gives mostly rares and epics, and legendaries more often. {@code bonus} (a repeated clear, a restocked shop) moves some weight from the
+     * least rare to the best rarity that place gives.
+     */
+    static double[] odds(String world, Source source, int bonus) {
+        double[] w = switch (world) {
+            case Worlds.FOREST -> switch (source) {
+                case CACHE, ELITE -> new double[]{60, 40, 0, 0, 0};
+                case CHEST -> new double[]{45, 55, 0, 0, 0};
+                case GUARDIAN -> new double[]{15, 85, 0, 0, 0};
+                case SHOP -> new double[]{55, 45, 0, 0, 0};
+            };
+            case Worlds.LAB -> switch (source) {                                 // Stormcliff: mostly rares, epics often
+                case CACHE -> new double[]{5, 35, 40, 17, 3};
+                case ELITE -> new double[]{5, 30, 42, 20, 3};
+                case CHEST -> new double[]{0, 20, 45, 30, 5};
+                case GUARDIAN -> new double[]{0, 0, 40, 45, 15};
+                case SHOP -> new double[]{10, 35, 38, 15, 2};
+            };
+            default -> switch (source) {
+                case CACHE -> new double[]{15, 45, 32, 8, 0};
+                case ELITE -> new double[]{15, 45, 30, 10, 0};
+                case CHEST -> new double[]{5, 40, 40, 15, 0};
+                case GUARDIAN -> new double[]{0, 10, 50, 35, 5};
+                case SHOP -> new double[]{20, 45, 28, 7, 0};
+            };
+        };
+        int bottom = 0, top = w.length - 1;
+        while (bottom < top && w[bottom] == 0) bottom++;
+        while (top > bottom && w[top] == 0) top--;
+        double moved = Math.min(w[bottom], 4 * Math.max(0, bonus));
+        w[bottom] -= moved;
+        w[top] += moved;
+        return w;
     }
 
     /** Picks a rarity from weights (one per {@link Rarity}, common first). */

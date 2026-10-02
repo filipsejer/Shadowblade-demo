@@ -208,7 +208,7 @@ final class LevelView {
             }
             for (Prop p : b.patches) if (p.touches(v)) p.sprite.draw(g, p.x, p.y, Art.SCALE, p.flip);
             for (Prop p : b.flat) if (p.touches(v)) p.sprite.draw(g, p.x, p.y, Art.SCALE, p.flip);
-            for (Rectangle2D.Double wr : b.level.water) if (wr.intersects(v)) water(g, wr, v);
+            for (Rectangle2D.Double wr : b.level.water) if (wr.intersects(v)) water(g, wr, v, b.level.theme);
             g.setStroke(new BasicStroke(34f));                      // the floor gets a soft shadow along the walls
             g.setColor(new Color(0, 0, 0, 44));
             g.draw(b.floor);
@@ -222,18 +222,22 @@ final class LevelView {
         return img;
     }
 
-    private static TexturePaint waterPaint;
+    private static TexturePaint waterPaint, surfPaint;
 
-    /** A stretch of water (a canal): dark ripples, a shadow under the near wall, and a stone kerb along its open edge. */
-    private static void water(Graphics2D g, Rectangle2D.Double wr, Rectangle2D v) {
+    /**
+     * A stretch of water (a canal, or the breakers under Stormcliff's sea wall): dark ripples or white water, a shadow
+     * under the near wall, and a stone kerb along its open edge.
+     */
+    private static void water(Graphics2D g, Rectangle2D.Double wr, Rectangle2D v, Theme theme) {
         synchronized (LevelView.class) {
             if (waterPaint == null) waterPaint = ForestArt.paint(CityArt.water());
+            if (surfPaint == null) surfPaint = ForestArt.paint(LabArt.surf());
         }
-        tile(g, waterPaint, wr, v);
+        tile(g, theme == Theme.LAB ? surfPaint : waterPaint, wr, v);
         g.setColor(new Color(0, 0, 0, 70));
         g.fill(new Rectangle2D.Double(wr.x, wr.y, wr.width, 26));
         Rectangle2D.Double kerb = new Rectangle2D.Double(wr.x, wr.getMaxY() - 14, wr.width, 14);
-        tile(g, ThemeArt.of(Theme.CITY).wallPaint, kerb, v);
+        tile(g, ThemeArt.of(theme == Theme.LAB ? Theme.LAB : Theme.CITY).wallPaint, kerb, v);
         g.setColor(new Color(255, 255, 255, 40));
         g.fill(new Rectangle2D.Double(kerb.x, kerb.y, kerb.width, 2));
         g.setColor(new Color(0, 0, 0, 120));
@@ -316,7 +320,7 @@ final class LevelView {
     private static void buildPropsFor(Baked bk) {
         Level lv = bk.level;
         ThemeArt a = bk.art;
-        boolean forest = lv.theme == Theme.FOREST, city = lv.theme == Theme.CITY;
+        boolean forest = lv.theme == Theme.FOREST, city = lv.theme == Theme.CITY, lab = lv.theme == Theme.LAB;
         Random rng = new Random(lv.rooms.size() * 7919L + lv.theme.ordinal() * 104729L);
 
         List<Rectangle2D> keepClear = new ArrayList<>();            // never put anything on the ground near a doorway
@@ -375,7 +379,7 @@ final class LevelView {
                     }
                     bk.flat.add(new Prop(s, x, y, rng.nextBoolean(), 0));
                 }
-                if (city) {                                               // the city: house fronts along the top, odds and ends elsewhere
+                if (city || lab) {                                        // the city (and the laboratory): fronts along the top, odds and ends elsewhere
                     lineStreet(lv, a, rng, b, bk.scenery);
                     continue;
                 }
@@ -397,24 +401,12 @@ final class LevelView {
                             Sprite s;
                             int glow = 0;
                             if (side == 2) s = a.low[rng.nextInt(a.low.length)];
-                            else if (rng.nextInt(10) < 7) {
-                                int idx = rng.nextInt(a.tall.length);
-                                s = a.tall[idx];
-                                if (lv.theme == Theme.LAB) {
-                                    glow = switch (idx) {
-                                        case 0 -> 0x0250FF90;                                               // green tank
-                                        case 1 -> 0x02B98CFF;                                               // tesla coil
-                                        case 2 -> 0x0278B4FF;                                               // server lights
-                                        case 3 -> 0x02FF6EBE;                                               // pink tank
-                                        default -> 0x01C8FFF8;                                              // fluorescent lamp
-                                    };
-                                }
-                            } else s = a.low[rng.nextInt(a.low.length)];
+                            else if (rng.nextInt(10) < 7) s = a.tall[rng.nextInt(a.tall.length)];
+                            else s = a.low[rng.nextInt(a.low.length)];
                             bk.scenery.add(new Prop(s, x, y, rng.nextBoolean(), glow));
                         }
                         pos += 78 + rng.nextDouble() * 70;
                     }
-                    if (a.facade.length > 0) addWindows(lv, a, rng, b, side, bk.scenery);
                 }
             }
         }
@@ -468,22 +460,6 @@ final class LevelView {
         return true;
     }
 
-    /** The lab: panels and gauges stuck onto its walls. */
-    private static void addWindows(Level lv, ThemeArt a, Random rng, Rectangle2D b, int side, List<Prop> out) {
-        boolean horizontal = side == 0 || side == 2;
-        double len = horizontal ? b.getWidth() : b.getHeight();
-        for (double pos = 60; pos < len - 40; pos += 64) {
-            double x, y;
-            switch (side) {
-                case 0 -> { x = b.getX() + pos; y = b.getY() - 20; }
-                case 2 -> { x = b.getX() + pos; y = b.getMaxY() + 54; }
-                case 1 -> { x = b.getMaxX() + 32; y = b.getY() + pos; }
-                default -> { x = b.getX() - 32; y = b.getY() + pos; }
-            }
-            if (!outsideAll(lv, x, y) || nearDoor(lv, x, y)) continue;
-            out.add(new Prop(a.facade[rng.nextInt(a.facade.length)], x, y, false, 0));
-        }
-    }
 
     private static boolean nearInteractive(Level lv, double x, double y) {
         for (Level.Npc n : lv.npcs) if (Util.dist(x, y, n.x(), n.y()) < 100) return true;

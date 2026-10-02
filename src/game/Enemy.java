@@ -83,6 +83,10 @@ final class Enemy {
     boolean chargeHit;          // whether this charge has already landed its hit
     boolean summoned;           // a creation of the boss: worth no XP, and it falls apart when he does
     boolean elite;              // a fight's elite: much tougher, gold-tinted, drops a treasure chest
+    boolean specimen;           // one of Morrow's escaped specimens (a hunt's goal): dormant until woken, it bolts when hurt
+    int molts;                  // a specimen: how many times it has shed monsters and bolted
+    double flee;                // a specimen bolting: seconds left running away
+    boolean forWard;            // going for what you protect (Copper, the engine) instead of you, until you hit it
     double orbitCd;             // a run's orbit blades: time until they may cut this one again
     double shootTimer;
     double strafeDir;
@@ -120,6 +124,9 @@ final class Enemy {
     /** A nest: never moves, never attacks. */
     boolean rooted() { return type == Type.NEST; }
 
+    /** Too big to be wiped out by a bomb, a relay's pulse or a lightning strike: the boss, nests, elites and specimens. */
+    boolean tough() { return type == Type.BOSS || rooted() || elite || specimen; }
+
     /** A nest that has noticed you (it sends its first guards at once). */
     boolean awake;
 
@@ -137,7 +144,7 @@ final class Enemy {
      * {@link Type#resist}) go up less; armored enemies (the boss) not at all — juggling him would trivialise the fight.
      */
     void launch(double vz0) {
-        if (type.armored || elite) return;
+        if (type.armored || elite || specimen) return;
         vz = Math.max(vz, vz0 * (1 - type.resist));
     }
 
@@ -159,6 +166,7 @@ final class Enemy {
     private void damage(World w, double dmg, double kbx, double kby, double stunTime, Color textColor, boolean magic, boolean crit) {
         if (hp <= 0 || intangible() || stageTimer > 0) return;        // nothing touches a shade in shadow mode, or a boss changing stage
         hp -= dmg;
+        forWard = false;                                              // hit it, and it turns on you
         flash = 0.1;
         double k = 1 - type.resist;
         kx += kbx * k;
@@ -249,15 +257,30 @@ final class Enemy {
 
         if (spawnIn > 0) { spawnIn -= dt; return; }
         if (rooted()) { kx = ky = 0; return; }                    // a nest just sits there (Run sends its guards)
+        if (specimen && !awake) { kx = ky = 0; return; }          // a specimen sleeps until something comes near
         if (type.shadowy) updateShadow(w, dt);
         if (stun > 0) { stun -= dt; return; }
 
         if (!airborne()) {                                        // up in the air: no AI, just falling and drifting on whatever knockback it has left
             Player p = w.player;
-            double dx = p.x - x, dy = p.y - y;
+            Ward ward = forWard && w.run != null && w.run.ward != null && w.run.ward.targetable() ? w.run.ward : null;
+            if (forWard && ward == null) forWard = false;
+            double tx = ward != null ? ward.x : p.x, ty = ward != null ? ward.y : p.y;
+            double dx = tx - x, dy = ty - y;
             double dist = Math.max(0.001, Math.hypot(dx, dy));
             double ux = dx / dist, uy = dy / dist;
-            Util.Vec way = w.paths != null ? w.paths.direction(x, y, radius, p.x, p.y) : null;   // around the walls if they're in the way
+            if (flee > 0) {                                       // a specimen bolting: straight away from you, fast
+                flee -= dt;
+                x -= ux * type.speed * 2.6 * dt;
+                y -= uy * type.speed * 2.6 * dt;
+                faceLeft = ux > 0;
+                Util.Vec inside = w.level.clamp(x, y, radius);
+                x = inside.x();
+                y = inside.y();
+                return;
+            }
+            PathField field = ward != null ? w.wardPaths : w.paths;
+            Util.Vec way = field != null ? field.direction(x, y, radius, tx, ty) : null;   // around the walls if they're in the way
             if (way != null) {
                 boolean detour = way.x() * ux + way.y() * uy < 0.3;       // heading off sideways or back to get round something
                 ux = way.x();
@@ -272,7 +295,7 @@ final class Enemy {
             // (ux, uy) is the way to walk to reach the player; dist is still the straight-line distance to them
             if (type == Type.BOSS) updateBoss(w, dt, p, ux, uy, dist, speed);
             else if (type == Type.SHOOTER) updateShooter(w, dt, ux, uy, dist, speed);
-            else updateMelee(w, dt, p, ux, uy, dist, speed);
+            else updateMelee(w, dt, p, ward, ux, uy, dist, speed);
         }
 
         Util.Vec inside = w.level.clamp(x, y, radius);
@@ -293,12 +316,14 @@ final class Enemy {
         }
     }
 
-    private void updateMelee(World w, double dt, Player p, double ux, double uy, double dist, double speed) {
+    /** Walks at its target (you, or the ward it's after), winds up when close, and strikes. */
+    private void updateMelee(World w, double dt, Player p, Ward ward, double ux, double uy, double dist, double speed) {
+        double reach = ward != null ? ward.radius : p.radius;
         switch (state) {
             case CHASE -> {
                 x += ux * speed * dt;
                 y += uy * speed * dt;
-                if (dist - radius - p.radius < 12 && !intangible()) {
+                if (dist - radius - reach < 12 && !intangible()) {
                     state = State.WINDUP;
                     stateTimer = windupTotal = type.windup;
                     windupSound(w);
@@ -308,7 +333,8 @@ final class Enemy {
                 stateTimer -= dt;
                 if (stateTimer <= 0) {
                     w.soundAt(Snd.ENEMY_STRIKE, x, y);
-                    if (dist - radius - p.radius < strikeReach()) p.hurt(w, damage, x, y);
+                    if (ward != null) { if (dist - radius - reach < strikeReach() && ward.targetable()) w.run.hitWard(w, damage); }
+                    else if (dist - radius - p.radius < strikeReach()) p.hurt(w, damage, x, y);
                     state = State.RECOVER;
                     stateTimer = 0.6;
                 }

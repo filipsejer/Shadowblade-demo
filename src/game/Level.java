@@ -119,6 +119,8 @@ final class Level {
     /** A battlefield's nests, and the spots its gold-bought caches stand on (see {@link Run}). */
     final List<Util.Vec> nestSpots = new ArrayList<>();
     final List<Util.Vec> cacheSpots = new ArrayList<>();
+    /** An escort's way across the battlefield, start to finish, every leg of it walkable in a straight line (empty otherwise). */
+    final List<Util.Vec> route = new ArrayList<>();
     /** Solid ground you can't walk on (a flower bed), sitting on top of a room's floor. */
     final List<Rectangle2D.Double> grassPatches = new ArrayList<>();
     /** Water you can't walk into (a canal), cut into a room's floor. */

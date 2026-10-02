@@ -204,25 +204,21 @@ final class ArmoryScreen {
         String kind = (it.rarity.label + " " + it.slot.label + DOT + (it.tier >= 3 ? "a victory's reward" : "found on stage " + (it.tier + 1))).toUpperCase();
         MenuStyle.shadowed(g, kind, cx - fm.stringWidth(kind) / 2.0, y + 154 * s, DIM);
 
-        double ly = y + 188 * s;
-        for (Map.Entry<Item.Stat, Double> e : it.stats.entrySet()) {
-            g.setFont(MenuStyle.sans(Font.PLAIN, 14 * s));
-            MenuStyle.diamond(g, px + 4 * s, ly - 5 * s, 3.5 * s, Util.alpha(it.rarity.color, 0.9));
-            MenuStyle.shadowed(g, e.getKey().format(it.value(e.getKey())), px + 16 * s, ly, new Color(228, 240, 228));
-            ly += 22 * s;
-        }
+        // its stats, each set against what you wear in this slot
+        Item worn = prof.equipped.get(it.slot);
+        double ay = y + ch - 84 * s, step = 28 * s;
+        double ly = y + 198 * s, room = ay - 34 * s - ly - (it.unique != null ? 44 * s : 0) - (worn != null && worn != it ? 22 * s : 0);
+        ly = ItemCompare.draw(g, it, worn, px, x + cw - 22 * s, ly, Math.min(22 * s, room / Math.max(1, ItemCompare.lines(it, worn))), s);
         if (it.unique != null) {
             g.setFont(MenuStyle.serif(Font.ITALIC, 15 * s, 0));
             ly = MenuStyle.wrap(g, it.unique.text, px, ly + 4 * s, cw - 44 * s, 19 * s, ORANGE);
         }
-        Item worn = prof.equipped.get(it.slot);
         if (worn != null && worn != it) {
             g.setFont(MenuStyle.sans(Font.PLAIN, 12 * s));
-            MenuStyle.shadowed(g, "Would replace " + worn.name + (worn.upgrade > 0 ? " +" + worn.upgrade : ""), px, ly + 8 * s, DIM);
+            MenuStyle.shadowed(g, fit(g, "Would replace " + worn.name + (worn.upgrade > 0 ? " +" + worn.upgrade : ""), cw - 44 * s), px, ly + 8 * s, DIM);
         }
 
         // what the keys would do to it
-        double ay = y + ch - 84 * s, step = 28 * s;
         boolean maxed = it.upgrade >= Item.MAX_UPGRADE, afford = prof.gold >= it.upgradeCost();
         action(g, "ENTER", prof.isEquipped(it) ? "Take off" : "Equip", TEXT, px, ay, s);
         action(g, "U", maxed ? "Fully upgraded" : "Upgrade to +" + (it.upgrade + 1) + DOT + it.upgradeCost() + " gold",

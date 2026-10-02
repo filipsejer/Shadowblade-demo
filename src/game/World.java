@@ -45,6 +45,10 @@ final class World {
     static final double MAP_HOLD = 0.2;
     /** How the horde finds its way to you around the walls of a battlefield (null in the explorable world). */
     PathField paths;
+    /** The routes to what you protect, for the monsters going for it (see {@link Ward}). */
+    PathField wardPaths;
+    /** A lightning flash lighting up everything, 1 at the strike, fading to 0; and seconds until the next far-off one. */
+    double lightning, nextFlash = 6;
 
     /** A sound the game wants played. The sound engine turns these into audio (see {@link GameAudio}); the world just says what happened. */
     record Cue(Snd snd, double x, double y, boolean positional, double delay, double gain, double rate) {}
@@ -365,7 +369,7 @@ final class World {
         Run.delete(Profile.home().resolve("run.properties"));          // (a save from before the adventure, if there is one)
         profile = new Profile();
         adventure = new Adventure();
-        adventure.restock();
+        adventure.restock(Worlds.FOREST);
         enterWorld();
         Story.intro(this);
         saveGame();
@@ -483,9 +487,15 @@ final class World {
         if (run != null) {                                          // the routes to wherever you're standing now
             if (paths == null || !paths.fits(level)) paths = new PathField(level);
             paths.update(this, dt);
+            Ward ward = run.ward;
+            if (ward != null && ward.targetable()) {                // and to what you protect
+                if (wardPaths == null || !wardPaths.fits(level)) wardPaths = new PathField(level);
+                wardPaths.update(this, dt, ward.x, ward.y);
+            }
         } else {
-            paths = null;
+            paths = wardPaths = null;
         }
+        updateWeather(dt);
         for (Enemy e : enemies) e.update(this, dt);
         enemies.addAll(arrivals);                       // creatures the boss summoned this frame join the fight now that the loop is over
         arrivals.clear();
@@ -1173,10 +1183,55 @@ final class World {
         shake = Math.max(shake, 3);
     }
 
-    /** Counts the flask bombs down; a burst one hurts the player if they are standing in it. */
+    /**
+     * Stormcliff's weather: every so often, far-off lightning lights the whole place up for a moment, with thunder
+     * rolling in after it (the strikes in a fight flash brighter, see {@link #strike}).
+     */
+    private void updateWeather(double dt) {
+        lightning = Math.max(0, lightning - dt * 2.2);
+        if (level.theme != Theme.LAB) return;
+        nextFlash -= dt;
+        if (nextFlash > 0) return;
+        nextFlash = 9 + rng.nextDouble() * 12;
+        lightning = Math.max(lightning, 0.55);
+        sound(Snd.THUNDER_FAR, 0.4 + rng.nextDouble() * 0.8);
+    }
+
+    /** The storm strikes: a bolt from the sky, a flash, thunder, and everything standing there hit. */
+    private void strike(Blast b) {
+        double[] xs = new double[9], ys = new double[9];
+        for (int i = 0; i < xs.length; i++) {
+            double t = i / (xs.length - 1.0);
+            xs[i] = b.x + (i == xs.length - 1 ? 0 : (rng.nextDouble() - 0.5) * 70 * (1 - t * 0.6));
+            ys[i] = b.y - 900 * (1 - t);
+        }
+        b.boltX = xs;
+        b.boltY = ys;
+        lightning = 1;
+        shake = Math.max(shake, 7);
+        soundAt(Snd.THUNDER_NEAR, b.x, b.y);
+        effects.add(Effect.ring(b.x, b.y, 10, b.radius * 1.3, 0.35, new Color(200, 230, 255), true));
+        for (int i = 0; i < 10; i++) effects.add(Effect.spark(b.x, b.y - 6, rng.nextDouble() * Math.PI * 2, 120 + rng.nextDouble() * 200, 4, 0.4, new Color(210, 235, 255)));
+        if (Util.dist(b.x, b.y, player.x, player.y) < b.radius + player.radius * 0.5) player.hurt(this, b.damage, b.x, b.y);
+        for (Enemy e : enemies) {
+            if (!e.targetable() || Util.dist(b.x, b.y, e.x, e.y) > b.radius + e.radius * 0.5) continue;
+            double dmg = e.type == Enemy.Type.BOSS ? e.maxHp * 0.03 : e.tough() ? e.maxHp * 0.2 : e.hp + 1;
+            e.hurt(this, dmg, 0, 0, 0.4, new Color(200, 230, 255), true, false);
+        }
+        smashNear(b.x, b.y, b.radius);
+    }
+
+    /** Counts the flask bombs (and lightning strikes) down; a burst one hurts whoever is standing in it. */
     private void updateBlasts(double dt) {
         for (Iterator<Blast> it = blasts.iterator(); it.hasNext(); ) {
             Blast b = it.next();
+            if (!b.burst && b.lightning) {
+                b.delay -= dt;
+                if (b.delay > 0) continue;
+                b.burst = true;
+                strike(b);
+                continue;
+            }
             if (!b.burst) {
                 b.delay -= dt;
                 if (b.delay > 0) continue;

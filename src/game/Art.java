@@ -24,6 +24,8 @@ final class Art {
         TownArt.register(SPRITES);
         CityArt.register(SPRITES);
         CityFolk.register(SPRITES);
+        LabArt.register(SPRITES);
+        LabFolk.register(SPRITES);
         RunArt.register(SPRITES);
         ImportedArt.register(SPRITES);      // the drawn art, over the painted sprites it replaces
     }

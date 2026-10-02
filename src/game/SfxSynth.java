@@ -726,6 +726,27 @@ final class SfxSynth {
                 x.reverb(0.45, 0.5, 0.2);
                 return x;
             }
+            case THUNDER_NEAR -> {                                               // the crack of a strike right here, and the rumble after it
+                Sx x = new Sx(3.2, seed);
+                x.noise(HIGH, 0, 0.12, 6000, 2500, 0.7, 1.0, 0.0005, 0.03).noise(BAND, 0, 0.25, 2400 * k, 900, 0.9, 1.2, 0.0005, 0.06)
+                    .crackle(0, 0.35, 40, 5200, 0.7).tone(SINE, 0, 0.6, 90, 34, 0.7, 0.002, 0.25)
+                    .noise(LOW, 0.05, 3.0, 900, 110, 0.8, 1.5, 0.04, 0.9).am(0.2, 3.0, 7 * k, 0.45);
+                x.reverb(0.8, 0.5, 0.35);
+                return x;
+            }
+            case ROBOT_TALK -> {                                                 // a robot's syllable: a bright little two-tone chirp
+                int[] notes = {79, 84, 81, 86};
+                double f = n(notes[v % 4]);
+                Sx x = new Sx(0.12, seed);
+                x.tone(SQUARE, 0, 0.045, f, f, 0.6, 0.002, 0.03).tone(SQUARE, 0.045, 0.05, f * 1.12, f * 1.12, 0.5, 0.002, 0.03).lowpass(3200);
+                return x;
+            }
+            case THUNDER_FAR -> {                                                // a long roll of thunder, far off over the sea
+                Sx x = new Sx(4.5, seed);
+                x.noise(LOW, 0, 4.2, 420 * k, 90, 0.8, 1.0, 0.35, 1.3).am(0, 4.2, 4.5 * k, 0.55).noise(LOW, 0.6 * k, 2.5, 260, 80, 0.8, 0.7, 0.2, 0.9);
+                x.reverb(0.85, 0.6, 0.4);
+                return x;
+            }
             case CITY_HORN -> {
                 Sx x = new Sx(2.2, seed);
                 double f = v == 0 ? 220 : 196;

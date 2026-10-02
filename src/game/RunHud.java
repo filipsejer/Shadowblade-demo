@@ -77,7 +77,7 @@ final class RunHud {
         // the objective and the danger clock (top centre)
         Enemy boss = w.boss();
         g.setFont(f30b);
-        String goal = run.bossDead ? "CLEARED" : boss != null ? "GUARDIAN" : run.bossWarning > 0 ? "..." : run.challenge.goalWord() + "  " + (run.nestsTotal - run.nestsLeft) + " / " + run.nestsTotal;
+        String goal = run.bossDead ? "CLEARED" : boss != null ? "GUARDIAN" : run.bossWarning > 0 ? "..." : run.challenge.goalWord() + "  " + run.tally();
         centered(g, goal, width / 2.0, 52, run.bossDead ? new Color(150, 240, 150) : boss != null ? new Color(255, 110, 110) : Color.WHITE);
         g.setFont(f12b);
         String danger = run.dangerLabel();
@@ -110,6 +110,9 @@ final class RunHud {
                 centered(g, "GET BACK IN THE CIRCLE!", width / 2.0, 130, Util.alpha(new Color(255, 120, 90), 0.6 + 0.4 * k));
             }
         }
+
+        Ward ward = run.ward;
+        if (ward != null && boss == null && run.nestsLeft > 0) drawWardBar(g, w, ward, width);
 
         if (w.mapZoom <= 0) minimap.draw(g, w, width, height);   // (held open, the Renderer draws it over everything else)
         drawSkillSlots(g, p, height);
@@ -184,6 +187,31 @@ final class RunHud {
     }
 
     /** Arrows at the screen's edge pointing to chests and the portal when they're off-screen. */
+    /**
+     * What you're protecting: how far Copper has got (or how charged the engine is), its health under that, and a
+     * warning when it's down or waiting for you.
+     */
+    private void drawWardBar(Graphics2D g, World w, Ward ward, int width) {
+        boolean robot = ward.kind == Ward.Kind.ROBOT;
+        double bw = Math.min(460, width - 560), bx = (width - bw) / 2;
+        Color c = robot ? Ward.COPPER_LIGHT : Ward.FROST;
+        bar(g, bx, 86, bw, 14, ward.progress(), c);
+        g.setFont(f12b);
+        String label = robot ? "COPPER" + (ward.work > 0 ? " - CUTTING THROUGH THE VINES" : "") + "   " + (int) (ward.progress() * 100) + "% OF THE WAY"
+            : "STASIS ENGINE CHARGING   " + (int) (ward.progress() * 100) + "%";
+        centered(g, label, width / 2.0 + 1, 99, new Color(0, 0, 0, 200));
+        centered(g, label, width / 2.0, 98, Color.WHITE);
+        double hp = ward.broken ? 0 : ward.hp / ward.maxHp;                        // its health, a thin bar under
+        bar(g, bx, 104, bw, 6, hp, hp < 0.3 ? new Color(235, 80, 70) : new Color(90, 210, 110));
+        String warn = null;
+        if (ward.broken) warn = robot ? "COPPER IS DOWN! STAND BY HIM TO REPAIR" : "THE ENGINE IS DOWN! STAND BY IT TO RESTART";
+        else if (robot && !ward.moving && ward.work <= 0) warn = "COPPER IS WAITING FOR YOU";
+        if (warn == null) return;
+        g.setFont(f22b);
+        double k = 0.5 + 0.5 * Math.sin(w.time * 9);
+        centered(g, warn, width / 2.0, 138, Util.alpha(ward.broken ? new Color(255, 120, 90) : new Color(255, 214, 140), 0.6 + 0.4 * k));
+    }
+
     private void drawArrows(Graphics2D g, World w, Run run, int width, int height) {
         double left = Util.clamp(w.camX - width / 2.0, 0, Math.max(0, w.level.width - width));
         double top = Util.clamp(w.camY - height / 2.0, 0, Math.max(0, w.level.height - height));
@@ -199,6 +227,9 @@ final class RunHud {
         }
         for (Enemy e : w.enemies) if (e.rooted() && e.hp > 0) arrow(g, e.x - left, e.y - top, new Color(230, 110, 255), width, height);
         for (Relay r : run.relays) if (!r.done) arrow(g, r.x - left, r.y - top, Run.RELAY_LIGHT, width, height);
+        for (Enemy e : w.enemies) if (e.specimen && e.hp > 0) arrow(g, e.x - left, e.y - top, Run.SPECIMEN_GLOW, width, height);
+        Ward ward = run.ward;
+        if (ward != null && run.nestsLeft > 0) arrow(g, ward.x - left, ward.y - top, ward.kind == Ward.Kind.ROBOT ? Ward.COPPER_LIGHT : Ward.FROST, width, height);
     }
 
     /** An arrow at the screen's edge pointing at something off-screen, at (sx, sy) in screen terms. */
@@ -243,9 +274,17 @@ final class RunHud {
         int n = choices.size();
         double cw = (n >= 4 ? 232 : 258) * s, ch = 336 * s, gap = 22 * s;
         double total = n * cw + (n - 1) * gap;
-        double x0 = (width - total) / 2, y0 = Math.max(150 * s, (height - ch) / 2 + 6 * s);
-
         boolean level = run.choiceTitle.startsWith("LEVEL");
+        List<Item> found = level ? List.of() : run.unseen;
+        double x0 = (width - total) / 2, y0 = Math.max(150 * s, (height - ch) / 2 + 6 * s) + (found.isEmpty() ? 0 : 64 * s);
+
+        if (!found.isEmpty()) {                                                  // what came out of the chest, above it all
+            int shown = Math.min(3, found.size());
+            double chipW = 306 * s, chipH = 52 * s, chipY = y0 - 172 * s, fx0 = cx - shown * chipW / 2;
+            g.setFont(MenuStyle.caps(11 * s));
+            MenuStyle.centred(g, shown == 1 ? "IN THE CHEST" : "IN THE CHESTS", cx, chipY - 10 * s, GOLD);
+            for (int i = 0; i < shown; i++) itemChip(g, found.get(i), fx0 + i * chipW + 5 * s, chipY, chipW - 10 * s, chipH, "NEW", s);
+        }
         double base = y0 - 58 * s;
         java.awt.geom.Rectangle2D hb = MenuStyle.headingCentred(g, level ? "LEVEL UP" : "TREASURE", cx, base, 60 * s, s, false).getBounds2D();
         MenuStyle.ruled(g, level ? "LEVEL " + (p.level - run.pendingLevels + 1) + DOT + "CHOOSE ONE" : "A FREE UPGRADE" + DOT + "CHOOSE ONE",
@@ -375,7 +414,7 @@ final class RunHud {
         java.awt.geom.Rectangle2D hb = MenuStyle.heading(g, "PAUSED", x0, base, 76 * s, s).getBounds2D();
         MenuStyle.ruled(g, run.challenge.title, hb.getCenterX(), base + 36 * s, hb.getX(), Math.max(hb.getMaxX(), hb.getX() + 10), 17 * s, s);
         g.setFont(MenuStyle.serif(Font.ITALIC, 16 * s, 0));
-        String status = "Level " + p.level + DOT + run.challenge.goalWord().toLowerCase() + " " + (run.nestsTotal - run.nestsLeft) + " / " + run.nestsTotal + DOT + run.gold + " gold" + DOT
+        String status = "Level " + p.level + DOT + run.challenge.goalWord().toLowerCase() + " " + run.tally() + DOT + run.gold + " gold" + DOT
             + run.loot.size() + " item" + (run.loot.size() == 1 ? "" : "s") + " found";
         MenuStyle.shadowed(g, status, x0, base + 66 * s, new Color(214, 206, 228, 220));
 
@@ -484,7 +523,7 @@ final class RunHud {
 
         String[][] tiles = {
             {Run.clock(run.time), "TIME"}, {String.valueOf(p.level), "LEVEL"}, {String.valueOf(w.kills), "KILLS"},
-            {(run.nestsTotal - run.nestsLeft) + " / " + run.nestsTotal, run.challenge.goalWord()}, {String.valueOf(run.elitesKilled), "ELITES"}, {run.dangerLabel(), "DANGER"},
+            {run.tally(), run.challenge.goalWord()}, {String.valueOf(run.elitesKilled), "ELITES"}, {run.dangerLabel(), "DANGER"},
         };
         double tw = 118 * s, ty = base + 104 * s, tx0 = cx - tiles.length * tw / 2;
         for (int i = 0; i < tiles.length; i++) {

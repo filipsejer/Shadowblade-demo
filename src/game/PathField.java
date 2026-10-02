@@ -155,10 +155,12 @@ final class PathField {
      * Keeps the field pointing at the player: worked out again when they step into another cell, when a crate or nest
      * comes or goes, or every so often.
      */
-    void update(World w, double dt) {
+    void update(World w, double dt) { update(w, dt, w.player.x, w.player.y); }
+
+    /** The same, pointing at (x, y) instead of the player (what a {@link Ward}'s attackers head for). */
+    void update(World w, double dt, double x, double y) {
         sinceBuild += dt;
         boolean changed = sync(w);
-        double x = w.player.x, y = w.player.y;
         if (!changed && row(y) * cols + col(x) == targetCell && sinceBuild < REBUILD) return;
         build(x, y);
     }
