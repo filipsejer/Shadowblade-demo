@@ -19,8 +19,8 @@ drawn art. All the music and sound effects are synthesised by code (there are no
 
 ## Just want to play it?
 
-Download [**Spellblade.jar**](https://github.com/filipsejer/Shadowblade-demo/releases/latest/download/Spellblade.jar)
-from the [latest release](https://github.com/filipsejer/Shadowblade-demo/releases/latest) and double-click it (or run
+Download [**Spellblade.jar**](https://github.com/filipsejer/Spellblade-demo/releases/latest/download/Spellblade.jar)
+from the [latest release](https://github.com/filipsejer/Spellblade-demo/releases/latest) and double-click it (or run
 `java -jar Spellblade.jar` in a terminal).
 You need [Java](https://adoptium.net/) 17 or newer installed — no other setup, no install. See **Controls** below for how to play.
 
@@ -48,7 +48,7 @@ To build the jar yourself (compiled for Java 17, with the images inside), which 
 ```
 
 The jar isn't kept in the repo. For a new release, build it and attach `dist/Spellblade.jar` to a
-[GitHub release](https://github.com/filipsejer/Shadowblade-demo/releases); the README's download link always
+[GitHub release](https://github.com/filipsejer/Spellblade-demo/releases); the README's download link always
 follows the latest one.
 
 ## Controls
