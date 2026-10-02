@@ -186,7 +186,6 @@ final class RunHud {
         g.drawString(label, (float) (x + size - fm.stringWidth(label) - 3), (float) (y + size - 2));
     }
 
-    /** Arrows at the screen's edge pointing to chests and the portal when they're off-screen. */
     /**
      * What you're protecting: how far Copper has got (or how charged the engine is), its health under that, and a
      * warning when it's down or waiting for you.

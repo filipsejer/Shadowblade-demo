@@ -16,8 +16,10 @@ final class MusicDirector {
     /** Seconds of a fight the battle theme plays its quiet opening (four bars of piano) before the band comes in. */
     static final double BATTLE_INTRO = 6.3;
 
-    /** {@code bed}: 0 none, 1 forest ambience, 2 city ambience, 3 Stormcliff's rain and sea. */
-    /** {@code hushed}: the song fades out but keeps its place, and carries on from there once it's lifted. */
+    /**
+     * {@code bed}: 0 none, 1 forest ambience, 2 city ambience, 3 Stormcliff's rain and sea. {@code hushed}: the song
+     * fades out but keeps its place, and carries on from there once it's lifted.
+     */
     record Choice(Tune tune, Mood mood, boolean paused, int bed, double bedLevel, boolean hushed) {
         Choice(Tune tune, Mood mood, boolean paused, int bed, double bedLevel) { this(tune, mood, paused, bed, bedLevel, false); }
     }

@@ -45,7 +45,7 @@ final class AudioSettings {
         return true;
     }
 
-    static Path file() { return Path.of(System.getProperty("user.home"), ".spellblade", "audio.properties"); }
+    static Path file() { return Profile.home().resolve("audio.properties"); }
 
     /** Reads the saved settings; anything missing or unreadable falls back to the defaults. */
     static AudioSettings load(Path path) {

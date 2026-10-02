@@ -136,12 +136,12 @@ final class LevelView {
             g.draw(r);
         }
 
-        for (Level.Door d : lv.doors) {                             // closed doors: bramble / shutters / a purple seal
+        for (Level.Door d : lv.doors) {                             // closed doors: bramble / shutters / laser gates
             if (d.open() || !view.intersects(d.gap)) continue;
-            g.setPaint(d.sealed ? b.art.sealedBarrier : b.art.combatBarrier);
+            g.setPaint(b.art.combatBarrier);
             g.fill(d.gap);
             double pulse = 0.5 + 0.5 * Math.sin(time * 4);
-            g.setColor(d.sealed ? new Color(190, 120, 255, (int) (50 + 60 * pulse)) : new Color(255, 60, 60, (int) (22 + 40 * pulse)));
+            g.setColor(new Color(255, 60, 60, (int) (22 + 40 * pulse)));
             g.fill(d.gap);
             g.setColor(new Color(0, 0, 0, 100));
             g.fillRect((int) d.gap.x, (int) d.gap.y, (int) d.gap.width, d.vertical ? 4 : (int) d.gap.height);

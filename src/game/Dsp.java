@@ -64,8 +64,6 @@ final class Dsp {
 
         Biquad bandpass(double fc, double q) { return set(2, fc, q); }
 
-        Biquad notch(double fc, double q) { return set(3, fc, q); }
-
         private Biquad set(int kind, double fc, double q) {
             fc = clamp(fc, 20, SR * 0.45);
             double w = TWO_PI * fc / SR, cos = Math.cos(w), sin = Math.sin(w), alpha = sin / (2 * Math.max(0.05, q));
@@ -73,8 +71,7 @@ final class Dsp {
             switch (kind) {
                 case 0 -> { nb0 = (1 - cos) / 2; nb1 = 1 - cos; nb2 = nb0; }
                 case 1 -> { nb0 = (1 + cos) / 2; nb1 = -(1 + cos); nb2 = nb0; }
-                case 2 -> { nb0 = alpha; nb1 = 0; nb2 = -alpha; }
-                default -> { nb0 = 1; nb1 = -2 * cos; nb2 = 1; }
+                default -> { nb0 = alpha; nb1 = 0; nb2 = -alpha; }
             }
             b0 = nb0 / a0;
             b1 = nb1 / a0;
@@ -309,7 +306,6 @@ final class Dsp {
         private int pos;
         private final float feedback;
         private final OnePole toneL = new OnePole(3200), toneR = new OnePole(3200);
-        private float lastL, lastR;
 
         Echo(double seconds, double feedback) {
             this.delay = Math.max(1, (int) (seconds * SR));

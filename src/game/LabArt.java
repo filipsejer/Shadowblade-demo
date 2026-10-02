@@ -31,7 +31,7 @@ final class LabArt {
     private static final int FOAM = rgb(170, 196, 210), FOAM_L = rgb(220, 236, 244);
     private static final int[] BASALT = {rgb(12, 16, 20), rgb(36, 44, 50), rgb(50, 60, 66), rgb(66, 78, 84), rgb(88, 102, 108)};
     private static final int MOSS = rgb(52, 78, 50), MOSS_L = rgb(78, 106, 62);
-    private static final int GLOW_GREEN = rgb(120, 255, 170), GLOW_GOLD = rgb(255, 220, 120), BOLT = rgb(210, 236, 255);
+    private static final int GLOW_GOLD = rgb(255, 220, 120), BOLT = rgb(210, 236, 255);
 
     // ------------------------------------------------------------------ materials
 

@@ -89,11 +89,6 @@ enum Challenge {
         this.cells = cells;
     }
 
-    static Challenge byId(String id) {
-        for (Challenge c : values()) if (c.id.equals(id)) return c;
-        return null;
-    }
-
     /** The goal in a word, for the HUD ("NESTS", "RELAYS", "SPECIMENS"...). */
     String goalWord() {
         return switch (goal) { case NESTS -> "NESTS"; case RELAYS -> "RELAYS"; case HUNT -> "SPECIMENS"; case ESCORT -> "ESCORT"; case DEFEND -> "ENGINE"; };

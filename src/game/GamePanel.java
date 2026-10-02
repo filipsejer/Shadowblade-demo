@@ -9,6 +9,7 @@ import javax.swing.JPanel;
 import javax.swing.Timer;
 
 /** Swing panel that runs the fixed-timestep game loop on the UI thread and paints the world. */
+@SuppressWarnings("serial")   // never serialized
 final class GamePanel extends JPanel {
     private static final double STEP = 1.0 / 60.0;
 

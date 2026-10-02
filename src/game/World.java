@@ -164,9 +164,6 @@ final class World {
         return out;
     }
 
-    /** The sounds queued and not yet drained (for tests). */
-    List<Cue> pendingSounds() { return sounds; }
-
     boolean forest() { return level.theme == Theme.FOREST; }
 
     /** Picks the version of a sound that belongs to the current level's theme. */

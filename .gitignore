@@ -1,5 +1,6 @@
-# build output
+# build output (run.sh compiles into out/, build.sh uses out_dist/ while it packs the jar)
 out/
+out_dist/
 *.class
 
 # run.sh logs / crash dumps
@@ -9,10 +10,8 @@ hs_err_pid*.log
 # macOS
 .DS_Store
 
-# dev scratch files that have ended up in the project root (screenshots and audio samples
-# taken while tuning graphics/sound, or by test tools' shot() helper writing beside cwd
-# instead of the scratchpad when run standalone; not part of the game or the repo)
+# dev scratch files: screenshots and audio taken while tuning graphics and sound (not part of the game)
 *.wav
+*.m4a
 [0-9]*_*.png
-audio_lab_laugh.png
-audio_sfx_contact_sheet.png
+audio_*.png

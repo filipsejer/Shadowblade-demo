@@ -4,7 +4,6 @@ import java.awt.Color;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-import java.util.function.Consumer;
 
 /**
  * Everything a level-up can offer in a fight. {@link Kind#SKILL}s are weapons that fire on their own (see
@@ -252,18 +251,4 @@ enum Perk {
         return out;
     }
 
-    /** Applies every rank the player holds, in order, to a fresh player (loading a saved run). */
-    static void reapply(Player p, int[] ranks) {
-        for (Perk k : values()) {
-            for (int r = 1; r <= ranks[k.ordinal()]; r++) {
-                p.perk[k.ordinal()] = r;
-                k.apply(p, r);
-            }
-        }
-    }
-
-    /** Runs {@code f} for every perk the player holds. */
-    static void forOwned(Player p, Kind kind, Consumer<Perk> f) {
-        for (Perk k : values()) if (k.kind == kind && p.perk[k.ordinal()] > 0) f.accept(k);
-    }
 }

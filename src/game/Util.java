@@ -2,6 +2,7 @@ package game;
 
 import java.awt.Color;
 
+/** Small helpers: vectors, distances and angles, clamping, colour fading and mixing. */
 final class Util {
     private Util() {}
 

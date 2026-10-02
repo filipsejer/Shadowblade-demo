@@ -171,7 +171,6 @@ final class FxArt {
         return c;
     }
 
-    /** The Guardian's bullets: glowing yellow spores with a green rim. */
     /** Bits of lab goo, spat out when a laboratory creature dies. */
     private static PixelCanvas goo(int f) {
         PixelCanvas c = new PixelCanvas(7, 7);

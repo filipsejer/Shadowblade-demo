@@ -28,7 +28,7 @@ final class ThemeArt {
 
     final Theme theme;
     final BufferedImage[] ground, plaza, boss, path;    // floor tiles, several variants each
-    final TexturePaint voidPaint, wallPaint, combatBarrier, sealedBarrier;
+    final TexturePaint voidPaint, wallPaint, combatBarrier;
     final Sprite[] floorProps, tall, low;                // scenery: flat bits on the floor, tall things and low things outside the walls
     /** Seamless floor textures (grass, the safe rooms' paving, the paths between rooms), when the theme has them; null otherwise. */
     final TexturePaint groundPaint, plazaPaint, pathPaint;
@@ -54,7 +54,6 @@ final class ThemeArt {
                 voidPaint = ForestArt.paint(ForestArt.canopy());
                 wallPaint = ForestArt.paint(ForestArt.hedge());
                 combatBarrier = paint(bramble(1));
-                sealedBarrier = paint(runes(1));
                 floorProps = ForestArt.floor();
                 tall = ForestArt.tall();
                 low = ForestArt.low();
@@ -72,7 +71,6 @@ final class ThemeArt {
                 voidPaint = ForestArt.paint(CityArt.roofs());
                 wallPaint = ForestArt.paint(CityArt.granite());
                 combatBarrier = paint(shutter(1));
-                sealedBarrier = paint(runes(1));
                 floorProps = CityArt.floor();
                 tall = CityArt.facades();
                 low = CityArt.low();
@@ -90,7 +88,6 @@ final class ThemeArt {
                 voidPaint = ForestArt.paint(LabArt.sea());
                 wallPaint = ForestArt.paint(LabArt.seaWall());
                 combatBarrier = paint(laserGate(1));
-                sealedBarrier = paint(blastDoor(1));
                 floorProps = LabArt.floor();
                 tall = LabArt.facades();
                 low = LabArt.low();
@@ -123,12 +120,7 @@ final class ThemeArt {
         return new TexturePaint(scaled(c), new Rectangle(0, 0, c.w * Art.SCALE, c.h * Art.SCALE));
     }
 
-
     // ------------------------------------------------------------------ forest tiles
-
-
-
-
 
     private static PixelCanvas forestBossFloor(int seed) {
         Random r = new Random(seed * 32452843L);
@@ -146,8 +138,6 @@ final class ThemeArt {
         }
         return c;
     }
-
-
 
     private static PixelCanvas bramble(int seed) {
         Random r = new Random(seed * 179424673L);
@@ -189,19 +179,7 @@ final class ThemeArt {
         return c;
     }
 
-    private static PixelCanvas runes(int seed) {
-        PixelCanvas c = new PixelCanvas(16, 16);
-        c.rect(0, 0, 16, 16, rgb(40, 24, 72));
-        int glow = rgb(190, 132, 255), dim = rgb(96, 60, 160);
-        c.rect(2, 2, 12, 1, dim); c.rect(2, 13, 12, 1, dim); c.rect(2, 2, 1, 12, dim); c.rect(13, 2, 1, 12, dim);
-        c.line(8, 3, 4, 8, glow); c.line(8, 3, 12, 8, glow); c.line(4, 8, 8, 13, glow); c.line(12, 8, 8, 13, glow);
-        c.set(8, 8, rgb(255, 230, 255)); c.set(7, 8, glow); c.set(9, 8, glow);
-        return c;
-    }
-
     // ------------------------------------------------------------------ laboratory tiles
-
-
 
     /** The sanctum: dark steel plates with glowing green circuit traces. */
     private static PixelCanvas labBossFloor(int seed) {
@@ -224,9 +202,6 @@ final class ThemeArt {
         return c;
     }
 
-
-
-
     /** A closed door in a fight: a grid of red laser beams. */
     private static PixelCanvas laserGate(int seed) {
         PixelCanvas c = new PixelCanvas(16, 16);
@@ -240,14 +215,4 @@ final class ThemeArt {
         return c;
     }
 
-    /** The sealed boss door: a steel blast door with chevrons and a red lock light. */
-    private static PixelCanvas blastDoor(int seed) {
-        PixelCanvas c = new PixelCanvas(16, 16);
-        c.rect(0, 0, 16, 16, rgb(70, 82, 92));
-        c.rect(0, 0, 16, 1, rgb(126, 142, 152)); c.rect(0, 15, 16, 1, rgb(34, 42, 50));
-        for (int i = 0; i < 16; i++) for (int j = 2; j < 5; j++) c.set(i, j, ((i + j) / 2) % 2 == 0 ? rgb(232, 194, 54) : rgb(30, 32, 36));
-        for (int i = 0; i < 16; i++) for (int j = 11; j < 14; j++) c.set(i, j, ((i - j + 16) / 2) % 2 == 0 ? rgb(232, 194, 54) : rgb(30, 32, 36));
-        c.rect(6, 6, 4, 4, rgb(40, 48, 56)); c.rect(7, 7, 2, 2, rgb(255, 60, 64)); c.set(7, 7, rgb(255, 190, 190));
-        return c;
-    }
 }

@@ -126,7 +126,6 @@ final class Renderer {
         return vignetteImage;
     }
 
-    /** Top-left world coordinate of the view; centred on the player but never showing past the arena edge. */
     /** The menus' backdrop is drawn this much closer than play (a whole number, so the pixel art stays crisp). */
     static final double TITLE_ZOOM = 2;
 

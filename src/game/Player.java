@@ -76,9 +76,6 @@ final class Player {
     /** How much further than usual a roll carries you (Evasive Roll's last rank). */
     double rollDistanceMult() { return rollBonus; }
 
-    /** How far a roll carries you, in pixels. */
-    double rollDistance() { return DODGE_SPEED * DODGE_TIME * rollDistanceMult(); }
-
     boolean swinging() { return swingTimer > 0; }
 
     /** How far through the current swing we are, 0 to 1 (for picking the sword pose). */

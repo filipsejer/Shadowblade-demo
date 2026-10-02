@@ -84,11 +84,6 @@ final class AudioEngine {
 
     // ================================================================== game-thread API
 
-    /** Installs the painted sound effects (called once the bank is ready). */
-    void setBank(SfxBank bank) { this.bank = bank; }
-
-    boolean hasBank() { return bank != null; }
-
     void setVolumes(double master, double music, double sfx, double ambience, boolean muted) {
         this.master = (float) Dsp.clamp(master, 0, 1);
         this.musicVolume = (float) Dsp.clamp(music, 0, 1);
@@ -142,9 +137,6 @@ final class AudioEngine {
         pending.incrementAndGet();
         commands.add(r);
     }
-
-    /** Requests waiting for the audio thread (for tests). */
-    int pendingCommands() { return pending.get(); }
 
     String status() { return status; }
 
@@ -372,7 +364,6 @@ final class AudioEngine {
 
     Music music() { return music; }
 
-    int voicesPlaying() { return playing.size(); }
 
     // ================================================================== ambience
 

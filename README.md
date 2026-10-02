@@ -10,12 +10,12 @@ A top-down action adventure in plain Java (Swing / Java2D), with no dependencies
   the monsters tougher the longer you take, caches to buy with the gold you pick up, and loops that make a cleared
   challenge harder (and better paid) every time you go back.
 
-Chapter 1 is **The Whispering Forest**; chapter 2 is **Lumen, the City of Lamps**, down the road south; chapter 3 is
-**Stormcliff**, Doctor Morrow's laboratory up the coast road, in a storm that never ends. The monsters,
-bosses, the forest's trees and rocks, the nests, the crates and the chests are drawn pixel art made with
-[PixelLab](https://pixellab.ai) (the PNGs in `res/art`); everything else is pixel art painted by code at startup (see
-**Graphics engine**), the forest's, the city's and Stormcliff's ground and scenery painted to match the drawn art. All the music and sound effects are synthesised by code
-(there are no audio files; see **Sound engine**).
+This is the demo: three chapters. Chapter 1 is **The Whispering Forest**; chapter 2 is **Lumen, the City of Lamps**,
+down the road south; chapter 3 is **Stormcliff**, Doctor Morrow's laboratory up the coast road, in a storm that never
+ends. The monsters, bosses, the forest's trees and rocks, the nests, the crates and the chests are drawn pixel art
+made with [PixelLab](https://pixellab.ai) (the PNGs in `res/art`); everything else is pixel art painted by code at
+startup (see **Graphics engine**), the forest's, the city's and Stormcliff's ground and scenery painted to match the
+drawn art. All the music and sound effects are synthesised by code (there are no audio files; see **Sound engine**).
 
 ## Just want to play it?
 
@@ -42,7 +42,7 @@ still runs, with code-painted sprites in their place.
 To rebuild `dist/Spellblade.jar` (compiled for Java 17, with the images inside):
 
 ```sh
-rm -rf out_dist && mkdir out_dist && javac --release 17 -d out_dist src/game/*.java && (cd out_dist && printf 'Main-Class: game.Main\n' > ../manifest.tmp && jar cfm ../dist/Spellblade.jar ../manifest.tmp game -C ../res art) && rm manifest.tmp && rm -rf out_dist
+./build.sh
 ```
 
 ## Controls
@@ -167,7 +167,8 @@ star of all. Its lift is dead, its power cut off in the overgrown East Wing, so 
 rewire the junction. Then Ilse's **stasis engine** has to be kept standing beside the star until it's charged enough
 to freeze it, and then there's Morrow himself, in two stages. Beaten, he says he never made the stars fall: he only
 caught them. Something up there is still throwing them down. Ilse gives you **Morrow's Goggles** (an epic helm), gold
-and skill points.
+and skill points, and that's the end of the demo. Every challenge can still be replayed, harder and better paid each
+time.
 
 ## Challenges
 
@@ -313,18 +314,19 @@ game asks for a second press first. In Load Game, **X** (twice) deletes a game. 
 Each slot is a folder in `~/.spellblade` (`save1` ... `save5`) with two files: `adventure.properties` (the story, chests
 opened, challenges cleared, skill points, masteries, the merchants' stock, which world you're in and where you stood in
 each) and `profile.properties` (gold and equipment). `slots.properties` remembers which slot was played last. A save
-from before there were slots is moved into slot 1 the first time the game starts. `-Dspellblade.home=<folder>` moves
-it all.
+from before there were slots is moved into slot 1 the first time the game starts. The volume settings are kept beside
+them, in `audio.properties`. `-Dspellblade.home=<folder>` moves it all.
 
 ## Layout
 
 | File | What it does |
 | --- | --- |
+| `Main.java` / `GamePanel.java` / `Input.java` | The window and its icon, the fixed-step game loop (60 updates a second), and the keyboard |
 | `World.java` | Game state and rules: the main menu, walking around the world (talking, chests, gates), the trainer's and merchant's screens, starting and ending fights, collisions, the pause menu, the Armory, saving. `World` has no drawing code |
 | `Saves.java` | The five save slots: which one is in use, which was played last, what's in each (for the slot screen), deleting one, and moving an old save into slot 1 |
 | `Adventure.java` | The story so far (flags), chests opened, challenges cleared, skill points, masteries, Bramble's stock, where you stood; saving and loading it |
 | `Story.java` | All the words: what everyone says as the story moves on, what the chests hold, the objective line, the intro and Rowan's gift |
-| `Worlds.java` | The explorable worlds (`forest()` and `city()`: their areas, people, chests, gates and roads), their names, and the main menu's clearing |
+| `Worlds.java` | The explorable worlds (`forest()`, `city()` and `lab()`: their areas, people, chests, gates and roads), their names, and the main menu's clearing |
 | `Challenge.java` | The challenges: who asks, which world, the goal (nests, relays, a hunt, an escort or a defence), the guardian, the danger, the rewards |
 | `Relay.java` | A substation relay's state: switched on, powering up, held, done |
 | `Ward.java` | What you protect at Stormcliff: Copper and his route, or the stasis engine and its charge; broken and repaired |
@@ -333,10 +335,14 @@ it all.
 | `Mastery.java` | Ranger Ash's permanent upgrades |
 | `Perk.java` / `Arsenal.java` | Everything a level-up can offer (skills, passives, evolutions) and the self-firing skills' numbers per rank |
 | `Pickup.java` | Gems, gold, hearts, magnets, bombs, chests, caches and the portal |
-| `Item.java` / `Profile.java` | Equipment (slots, rarities, stats, legendaries) and the profile (gold, the bag, what's worn) |
+| `Item.java` / `Profile.java` | Equipment (slots, rarities, stats, legendaries, the odds of each rarity per world) and the profile (gold, the bag, what's worn) |
+| `ItemCompare.java` | An item's stats set against what you wear in the same slot, for the Armory's and the shops' close-up |
 | `Level.java` | A map: rooms (each one or more rectangles), corridors, people, chests, gates, scenery, and walkable-area collision |
 | `Player.java` | Movement, the combo, dash-through attacks, the roll |
 | `Enemy.java` | Enemy types (`Type` holds the stats), their AI, the guardian, and the nests |
+| `Projectile.java` / `Blast.java` / `Zone.java` | Shots, the scientist's flask bombs and Stormcliff's lightning strikes, and lingering ground areas (Ice Storm) |
+| `Breakable.java` | Crates and barrels: solid, broken in one hit, a little XP and gold |
+| `Util.java` | Small helpers: vectors, distances and angles, clamping, colour fading and mixing |
 | `PathField.java` | How monsters find you around walls, crates and nests: one shortest-route map (a flow field) for the whole horde, rebuilt as you move |
 | `Renderer.java` | Draws a frame: the world, then the HUD and whichever screen is up, and the speech box |
 | `WorldRenderer.java` | Draws the world itself: level, shadows, depth-sorted sprites, people, chests, gates, prompts, telegraphs, projectiles, effects, health bars |
@@ -352,8 +358,9 @@ it all.
 | `PeopleArt.java` / `TownArt.java` / `CityFolk.java` / `LabFolk.java` / `Doll.java` | The hero, the forest's people and stalls, Lumen's (Vell, Juno, Gus, Pip, Sable's and Nix's counters) and Stormcliff's (Ilse, Fern, Brass's and Quill's counters), painted at the drawn art's pixel size and shaded like it by `Doll` |
 | `SwordArt.java` | The hero's swords, drawn apart from him: one for each kind of weapon and rarity, painted at whatever angle a pose holds it |
 | `CreatureArt.java` / `FxArt.java` / `RunArt.java` / `BreakableArt.java` | Painted enemies (the fallback for the drawn ones), effects, pickups and item icons, crates |
+| `Effect.java` / `PixelFont.java` | Short-lived visuals (slashes, bursts, particles, damage numbers) and the tiny font the numbers are drawn in |
 | `Theme.java` / `ThemeArt.java` / `ForestArt.java` / `CityArt.java` / `LabArt.java` | The forest, city and Stormcliff looks: floors, walls, colours, scenery, and Copper, the stasis engine and the vine walls (`LabArt`), all painted to match the drawn art |
-| `Music*.java`, `Song*.java`, `Instruments.java`, `Sfx*.java`, `Audio*.java`, `Dsp.java`, `Snd.java` | The sound engine (below) |
+| `Music*.java`, `Song*.java`, `Instruments.java`, `Sfx*.java`, `Sx.java`, `Audio*.java`, `GameAudio.java`, `Dsp.java`, `Snd.java` | The sound engine (below) |
 
 ## Graphics engine
 

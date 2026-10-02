@@ -55,8 +55,6 @@ final class Level {
         final Rectangle2D.Double gap;    // the corridor proper, between the two rooms
         final Rectangle2D.Double walk;   // the gap plus some overlap into both rooms
         final boolean vertical;
-        final List<Rectangle2D.Double> barriers = new ArrayList<>();
-        final boolean sealed = false;
 
         /** Rooms {@code a} (above) and {@code b} (below), joined by a vertical corridor {@code offset} east of centre. */
         static Door vertical(Room a, Room b, double width, double offset) {

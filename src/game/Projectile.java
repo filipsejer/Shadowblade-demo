@@ -1,5 +1,6 @@
 package game;
 
+/** A shot in flight: the hero's skills (fireballs, Crescent Waves) or a monster's bullet. */
 final class Projectile {
     final boolean friendly;
     double x, y, vx, vy;

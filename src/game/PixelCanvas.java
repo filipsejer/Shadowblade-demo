@@ -23,8 +23,6 @@ final class PixelCanvas {
 
     static int rgba(int r, int g, int b, int a) { return (a & 255) << 24 | (r & 255) << 16 | (g & 255) << 8 | (b & 255); }
 
-    static int alphaOf(int c) { return c >>> 24; }
-
     /** Blend two colours (alpha included). t = 0 gives a, t = 1 gives b. */
     static int mix(int a, int b, double t) {
         t = Math.max(0, Math.min(1, t));
@@ -51,18 +49,6 @@ final class PixelCanvas {
     int get(int x, int y) { return in(x, y) ? px[y * w + x] : 0; }
 
     boolean solid(int x, int y) { return in(x, y) && (px[y * w + x] >>> 24) > 0; }
-
-    /** Paints over what's there, blending if the new colour is translucent. */
-    void blend(int x, int y, int c) {
-        if (!in(x, y)) return;
-        int a = c >>> 24;
-        if (a == 255) { px[y * w + x] = c; return; }
-        if (a == 0) return;
-        int below = px[y * w + x];
-        if ((below >>> 24) == 0) { px[y * w + x] = c; return; }
-        int out = mix(below, withAlpha(c, 255), a / 255.0);
-        px[y * w + x] = withAlpha(out, Math.max(below >>> 24, a));
-    }
 
     // ------------------------------------------------------------------ shapes
 
@@ -170,30 +156,6 @@ final class PixelCanvas {
             }
         }
         System.arraycopy(out, 0, px, 0, px.length);
-    }
-
-    /** Draws another canvas on top of this one with its top-left corner at (dx, dy). */
-    void paste(PixelCanvas src, int dx, int dy) {
-        for (int y = 0; y < src.h; y++) for (int x = 0; x < src.w; x++) blend(dx + x, dy + y, src.px[y * src.w + x]);
-    }
-
-    PixelCanvas flippedX() {
-        PixelCanvas o = new PixelCanvas(w, h);
-        for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) o.px[y * w + (w - 1 - x)] = px[y * w + x];
-        return o;
-    }
-
-    PixelCanvas copy() {
-        PixelCanvas o = new PixelCanvas(w, h);
-        System.arraycopy(px, 0, o.px, 0, px.length);
-        return o;
-    }
-
-    /** Number of painted (non-transparent) pixels. */
-    int paintedCount() {
-        int n = 0;
-        for (int c : px) if ((c >>> 24) != 0) n++;
-        return n;
     }
 
     BufferedImage image() {

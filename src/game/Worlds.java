@@ -178,6 +178,9 @@ final class Worlds {
         return lv;
     }
 
+    /** The city's margin round its outermost streets: room for the house fronts along the top ones to be seen. */
+    private static final double EDGE = 300;
+
     /**
      * Lumen, the City of Lamps: a night-time city whose lamps have flickered since a star fell into the Dynamo under it.
      * <pre>
@@ -190,9 +193,6 @@ final class Worlds {
      *                         [ DYNAMO STEPS ]        (the gate to the Dynamo Tower)
      * </pre>
      */
-    /** The city's margin round its outermost streets: room for the house fronts along the top ones to be seen. */
-    private static final double EDGE = 300;
-
     static Level city() {
         Level.Builder b = new Level.Builder();
         Level.Room square = b.start("LANTERN SQUARE", 1400, 1000, Level.Room.State.SAFE);

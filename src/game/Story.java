@@ -65,7 +65,7 @@ final class Story {
         else if (!a.has("quest.observatory")) goal = "Report to Doctor Ilse in the atrium";
         else if (a.clears(Challenge.OBSERVATORY) == 0) goal = "Ride the lift up to the Observatory, north of the atrium, and stop Morrow";
         else if (!a.has("gift.observatory")) goal = "Return to Doctor Ilse in the atrium";
-        else return "Chapter 3 complete. The story continues soon";
+        else return "The end of the demo. Thanks for playing! Every fight can be replayed, harder and better paid";
         return a.world.equals(Worlds.LAB) ? goal : "Return to Stormcliff by the coast road. " + goal;
     }
 
@@ -489,8 +489,8 @@ final class Story {
         });
         d.say(n, p, Snd.TOWN_TALK, "Whatever's up there, it's watching the places the stars landed. The forest, Lumen, here. We'll find out where it is. Together, I hope.", () -> {
             w.notice = "CHAPTER 3 COMPLETE";
-            w.noticeHint = "The star is frozen. Something above still throws them down. The story continues soon.";
-            w.noticeTimer = 7;
+            w.noticeHint = "That's the end of the Spellblade demo. Thanks for playing!";
+            w.noticeTimer = 8;
         });
     }
 

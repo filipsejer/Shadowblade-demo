@@ -59,8 +59,6 @@ final class Music {
 
     boolean silent() { return hush >= 1; }
 
-    String songId() { return current == null ? null : current.song.id; }
-
     Mood mood() { return mood; }
 
     /** True when a song is playing (or fading in). */
@@ -151,7 +149,7 @@ final class Music {
             for (int t = 0; t < ticks; t++) byTick[t] = lists[t].toArray(new Note[0]);
         }
 
-        @SuppressWarnings("unchecked")
+        @SuppressWarnings({"unchecked", "rawtypes"})
         private static List<Note>[] newLists(int n) {
             List<Note>[] a = new List[n];
             for (int i = 0; i < n; i++) a[i] = new ArrayList<>();
