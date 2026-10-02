@@ -19,7 +19,9 @@ drawn art. All the music and sound effects are synthesised by code (there are no
 
 ## Just want to play it?
 
-Download [`dist/Spellblade.jar`](dist/Spellblade.jar) and double-click it (or run `java -jar Spellblade.jar` in a terminal).
+Download [**Spellblade.jar**](https://github.com/filipsejer/Shadowblade-demo/releases/latest/download/Spellblade.jar)
+from the [latest release](https://github.com/filipsejer/Shadowblade-demo/releases/latest) and double-click it (or run
+`java -jar Spellblade.jar` in a terminal).
 You need [Java](https://adoptium.net/) 17 or newer installed — no other setup, no install. See **Controls** below for how to play.
 
 **On a Mac**, the first time you open it Gatekeeper will say it can't verify the jar is free of malware — that's just
