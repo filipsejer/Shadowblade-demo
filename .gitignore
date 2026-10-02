@@ -1,6 +1,8 @@
-# build output (run.sh compiles into out/, build.sh uses out_dist/ while it packs the jar)
+# build output (run.sh compiles into out/; build.sh packs the jar in out_dist/ and writes it to dist/, and the jar
+# players download is attached to the GitHub release instead of committed)
 out/
 out_dist/
+dist/
 *.class
 
 # run.sh logs / crash dumps

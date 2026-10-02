@@ -41,11 +41,15 @@ needs doing once; after that it opens normally. If that doesn't work, **System S
 Needs a JDK 17+. The drawn sprites are loaded from `res/` on the classpath (`run.sh` adds it). Without it, the game
 still runs, with code-painted sprites in their place.
 
-To rebuild `dist/Spellblade.jar` (compiled for Java 17, with the images inside):
+To build the jar yourself (compiled for Java 17, with the images inside), which writes `dist/Spellblade.jar`:
 
 ```sh
 ./build.sh
 ```
+
+The jar isn't kept in the repo. For a new release, build it and attach `dist/Spellblade.jar` to a
+[GitHub release](https://github.com/filipsejer/Shadowblade-demo/releases); the README's download link always
+follows the latest one.
 
 ## Controls
 
