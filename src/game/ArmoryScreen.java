@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The Armory, in the title screens' style ({@link MenuStyle}), over the same backdrop: a gold heading, then three glass
+ * The Armory (EQUIPMENT in the pause menu), in the title screens' style ({@link MenuStyle}): a gold heading, then three glass
  * cards — what you're wearing (and what it all adds up to), your bag (the selection glides from row to row), and the
  * selected item up close with what ENTER, U and X would do to it. Input is {@link World}'s {@code updateArmory}.
  */

@@ -9,7 +9,7 @@ import static game.Dsp.TWO_PI;
  * Music notes are made on the fly from these, so nothing has to be stored and the music can change with the action.
  *
  * <p>Notes for each drum kit use General MIDI numbers: 36 kick, 38 snare, 39 clap, 41 / 45 / 48 low / mid / high tom,
- * 42 closed hat, 46 open hat, 70 shaker, 76 wood block.
+ * 42 closed hat, 46 open hat, 70 shaker, 76 wood block. (In the war kit, 36 is a deep taiko-like drum.)
  */
 final class Instruments {
     private Instruments() {}
@@ -24,7 +24,7 @@ final class Instruments {
 
     enum Inst {
         FLUTE, HARP, PAD_WARM, PAD_DARK, PAD_SYNTH, BASS_ROUND, BASS_SYNTH, BASS_GROWL, FIDDLE, EPIANO, BRASS,
-        LEAD_SYNTH, ARP_SYNTH, STAB, DRUMS_FOLK, DRUMS_ELECTRO, DRUMS_WAR, THEREMIN, ORGAN
+        LEAD_SYNTH, ARP_SYNTH, STAB, DRUMS_FOLK, DRUMS_ELECTRO, DRUMS_WAR, THEREMIN, ORGAN, PIANO, STRINGS
     }
 
     /** Makes one note. {@code vel} is 0..1; {@code seed} keeps every note's noise and starting phase different. */
@@ -39,8 +39,9 @@ final class Instruments {
             case BASS_ROUND -> new Bass(f, vel, seed, 0);
             case BASS_SYNTH -> new Bass(f, vel, seed, 1);
             case BASS_GROWL -> new Bass(f, vel, seed, 2);
-            case FIDDLE -> new Strings(f, vel, seed, 2600, 0.012, 0.16);
-            case STAB -> new Strings(f, vel, seed, 3400, 0.006, 0.11);
+            case FIDDLE -> new Strings(f, vel, seed, 2600, 0.012, 0.16, 0.3, 700, 0.08);
+            case STAB -> new Strings(f, vel, seed, 3400, 0.006, 0.11, 0.3, 700, 0.08);
+            case STRINGS -> new Strings(f, vel, seed, 2400, 0.07, 0.9, 0.72, 1500, 0.3);
             case EPIANO -> new EPiano(f, vel, seed);
             case BRASS -> new Brass(f, vel, seed);
             case LEAD_SYNTH -> new Lead(f, vel, seed);
@@ -50,6 +51,7 @@ final class Instruments {
             case DRUMS_WAR -> new Drum(2, midi, vel, seed);
             case THEREMIN -> new Theremin(f, vel, seed);
             case ORGAN -> new Organ(f, vel, seed);
+            case PIANO -> new Piano(f, vel, seed);
         };
     }
 
@@ -244,28 +246,32 @@ final class Instruments {
         @Override boolean done() { return env.finished(); }
     }
 
-    /** A short bowed or brassy stab: two detuned saws whose brightness snaps down as the note begins. */
+    /**
+     * Bowed strings: two detuned saws whose brightness falls from {@code floor + cutoff} to {@code floor} as the note
+     * begins. Short and snappy (a stab, a fiddle chop) or, with a slow bow and a high sustain, a legato section.
+     */
     private static final class Strings extends Voice {
         private final double[] phase = new double[2], step = new double[2];
         private final float vel;
-        private final double cutoff;
+        private final double cutoff, floor;
         private final Dsp.Adsr env;
         private final Dsp.Biquad filter = new Dsp.Biquad();
         private long n;
 
-        Strings(double freq, float vel, long seed, double cutoff, double attack, double decay) {
+        Strings(double freq, float vel, long seed, double cutoff, double attack, double decay, double sustain, double floor, double release) {
             this.vel = vel;
             this.cutoff = cutoff;
+            this.floor = floor;
             Dsp.Noise noise = new Dsp.Noise(seed);
             for (int i = 0; i < 2; i++) {
                 step[i] = freq * Math.pow(2, (i == 0 ? -6 : 6) / 1200.0) / SR;
                 phase[i] = startPhase(noise);
             }
-            env = new Dsp.Adsr(attack, decay, 0.3, 0.08);
+            env = new Dsp.Adsr(attack, decay, sustain, release);
         }
 
         @Override float next() {
-            if ((n++ & 15) == 0) filter.lowpass(700 + cutoff * Math.exp(-n / (SR * 0.22)), 0.9);
+            if ((n++ & 15) == 0) filter.lowpass(floor + cutoff * Math.exp(-n / (SR * 0.22)), 0.9);
             double s = 0;
             for (int i = 0; i < 2; i++) {
                 phase[i] += step[i];
@@ -278,6 +284,88 @@ final class Instruments {
         @Override void release() { env.release(); }
 
         @Override boolean done() { return env.finished(); }
+    }
+
+    /**
+     * A grand piano. Up to fourteen partials, each slightly sharp of a true harmonic (a stiff string's stretch), with the
+     * one the hammer's striking point silences left out. Each dies away in two stages, a quick bloom and then a long
+     * ring, the high partials sooner than the low ones and the high notes sooner than the low ones; a hard strike is
+     * brighter than a soft one. A felt thump of filtered noise starts the note, and the damper stops it when the key
+     * comes up. Each partial is a rotating phasor (no sine calls), so a fast ostinato stays cheap.
+     */
+    private static final class Piano extends Voice {
+        private final int count;
+        private final double[] re, im, cr, ci, bloom, ring, bloomK, ringK;
+        private final float vel;
+        private final Dsp.Noise noise;
+        private final Dsp.Biquad hammer = new Dsp.Biquad();
+        private final double hammerK, damperK;
+        private double hammerLevel, damper = 1;
+        private boolean released;
+        private long n;
+
+        Piano(double freq, float vel, long seed) {
+            this.vel = vel;
+            this.noise = new Dsp.Noise(seed);
+            double stretch = 0.00012 * Math.pow(freq / 220, 1.2);                 // treble strings are stiffer
+            double fundamentalRing = Dsp.clamp(3.4 * Math.pow(261.6 / freq, 0.65), 0.45, 8);
+            double tilt = 2.1 - 0.9 * vel;                                         // soft notes are darker
+            int max = Math.max(1, Math.min(14, (int) (11000 / freq)));
+            re = new double[max]; im = new double[max]; cr = new double[max]; ci = new double[max];
+            bloom = new double[max]; ring = new double[max]; bloomK = new double[max]; ringK = new double[max];
+            int k = 0;
+            for (int h = 1; h <= max; h++) {
+                double f = freq * h * Math.sqrt(1 + stretch * h * h);
+                if (f > 15000) break;
+                double amp = Math.pow(h, -tilt) * (0.25 + 0.75 * Math.abs(Math.sin(Math.PI * h / 7.5)));   // struck about a seventh of the way along
+                double w = TWO_PI * f / SR;
+                re[k] = 1;
+                im[k] = 0;                                                         // every partial starts at zero: no click
+                cr[k] = Math.cos(w);
+                ci[k] = Math.sin(w);
+                double t = fundamentalRing / (1 + 0.45 * (h - 1));
+                bloom[k] = amp * 0.6;
+                ring[k] = amp * 0.4;
+                bloomK[k] = Math.exp(-1 / (SR * t * 0.12));
+                ringK[k] = Math.exp(-1 / (SR * t));
+                k++;
+            }
+            count = k;
+            hammer.bandpass(Math.min(4500, 900 + freq * 2.5), 0.8);
+            hammerLevel = 0.5 * vel * vel;
+            hammerK = Math.exp(-1 / (SR * 0.006));
+            damperK = Math.exp(-1 / (SR * (freq > 1400 ? 0.4 : 0.09)));          // the top of the keyboard has no dampers worth the name
+        }
+
+        @Override float next() {
+            double s = 0;
+            for (int i = 0; i < count; i++) {
+                double r = re[i] * cr[i] - im[i] * ci[i];
+                im[i] = re[i] * ci[i] + im[i] * cr[i];
+                re[i] = r;
+                bloom[i] *= bloomK[i];
+                ring[i] *= ringK[i];
+                s += im[i] * (bloom[i] + ring[i]);
+            }
+            if ((++n & 1023) == 0) {                                               // keep the phasors on the unit circle
+                for (int i = 0; i < count; i++) {
+                    double m = 1 / Math.sqrt(re[i] * re[i] + im[i] * im[i]);
+                    re[i] *= m;
+                    im[i] *= m;
+                }
+            }
+            if (hammerLevel > 1e-5) {
+                s += hammer.process(noise.next()) * hammerLevel;
+                hammerLevel *= hammerK;
+            }
+            if (released) damper *= damperK;
+            double attack = n < 64 ? n / 64.0 : 1;
+            return (float) (s * damper * attack * vel * 0.3);
+        }
+
+        @Override void release() { released = true; }
+
+        @Override boolean done() { return damper < 1e-3 || n > SR / 20 && bloom[0] + ring[0] < 1e-4; }
     }
 
     /** A soft electric piano (two-operator FM): a bell-like attack that mellows as it rings. */

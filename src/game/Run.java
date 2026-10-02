@@ -16,9 +16,10 @@ import java.util.Random;
  * level-up offers a choice of {@link Perk}s; all of that is gone when the fight ends. The horde never stops coming,
  * and it gets tougher the longer you take (the danger clock).
  *
- * <p>The goal: destroy the Blight's nests, spread across the map (each one spits out guards when you come near).
- * With the last one down, the challenge's guardian arrives inside a ring you can't leave, if it has one. Then a chest
- * and the way home. Along the way: elites with chests, crates with pickups, and caches you can open with the gold
+ * <p>The goal: destroy the Blight's nests, spread across the map (each one spits out guards when you come near), or
+ * in the city's substation, switch its relays back on and hold the ground round each one while it powers up
+ * ({@link Relay}). With that done, the challenge's guardian arrives inside a ring you can't leave, if it has one.
+ * Then a chest and the way home. Along the way: elites with chests, crates with pickups, and caches you can open with the gold
  * you've picked up. Gold, items, and (for a win) the challenge's reward of skill points are yours to keep.
  * {@link World} runs the fight itself; this class is the director on top.
  */
@@ -47,7 +48,10 @@ final class Run {
     final List<Item> loot = new ArrayList<>();
     final List<Pickup> pickups = new ArrayList<>();
 
+    /** The goal's count: nests, or relays in a relay fight (see {@link Challenge#goalWord}). */
     int nestsTotal, nestsLeft, elitesKilled, cachesOpened;
+    /** A relay fight's relays. */
+    final List<Relay> relays = new ArrayList<>();
     boolean bossSpawned, bossDead;
     double bossWarning;
     boolean ringActive;
@@ -99,9 +103,13 @@ final class Run {
         r.spawnTimer = 2;
         r.retune(w);
         for (Util.Vec v : w.level.nestSpots) {
-            Enemy nest = new Enemy(Enemy.Type.NEST, v.x(), v.y(), r.hpMult(p, Enemy.Type.NEST), 1, w.rng);
-            nest.spawnIn = 0;
-            w.enemies.add(nest);
+            if (c.goal == Challenge.Goal.RELAYS) {
+                r.relays.add(new Relay(v.x(), v.y()));
+            } else {
+                Enemy nest = new Enemy(Enemy.Type.NEST, v.x(), v.y(), r.hpMult(p, Enemy.Type.NEST), 1, w.rng);
+                nest.spawnIn = 0;
+                w.enemies.add(nest);
+            }
             r.nestsTotal++;
         }
         r.nestsLeft = r.nestsTotal;
@@ -109,7 +117,7 @@ final class Run {
         r.priceCaches();
         w.banner = c.title;
         w.bannerTimer = 3;
-        w.notice = "DESTROY THE " + r.nestsTotal + " NESTS";
+        w.notice = c.goal == Challenge.Goal.RELAYS ? "SWITCH ON THE " + r.nestsTotal + " RELAYS" : "DESTROY THE " + r.nestsTotal + " NESTS";
         w.noticeHint = (r.loops > 0 ? "Loop " + (r.loops + 1) + ": the Blight is stronger than last time.   " : "")
             + "Hold ENTER to swing your sword. The longer you take, the worse it gets.";
         w.noticeTimer = 6;
@@ -230,8 +238,9 @@ final class Run {
             eliteTimer -= dt;
             if (eliteTimer <= 0) { eliteTimer = ELITE_EVERY; spawnElite(w); }
             swarmTimer -= dt;
-            if (swarmTimer <= 0) { swarmTimer = SWARM_EVERY; swarm(w); }
+            if (swarmTimer <= 0) { swarmTimer = SWARM_EVERY; swarm(w, w.player.x, w.player.y); }
             updateNests(w, dt);
+            updateRelays(w, dt);
         }
         if (bossWarning > 0) {
             bossWarning -= dt;
@@ -243,21 +252,35 @@ final class Run {
         updatePickups(w, dt);
     }
 
-    /** Keeps the battlefield topped up: a few more monsters every third of a second while there are fewer than the target. */
+    /**
+     * Keeps the battlefield topped up: a few more monsters every third of a second while there are fewer than the
+     * target. While a relay is powering up, half as many again, coming quicker, out of the dark round it.
+     */
     private void direct(World w, double dt) {
         spawnTimer -= dt;
         if (spawnTimer > 0) return;
-        spawnTimer = 0.33;
-        int want = population(w.player) - w.enemies.size();
+        Relay surge = chargingRelay();
+        spawnTimer = surge != null ? 0.22 : 0.33;
+        int want = (int) Math.min(MAX_ENEMIES, population(w.player) * (surge != null ? 1.3 : 1)) - w.enemies.size();
         int shooters = 0;
         for (Enemy e : w.enemies) if (e.type == Enemy.Type.SHOOTER) shooters++;
         for (int i = 0; i < Math.min(3, want); i++) {
             Enemy.Type t = pickType();
             if (t == Enemy.Type.SHOOTER && shooters >= 8) t = Enemy.Type.GRUNT;
             if (t == Enemy.Type.SHOOTER) shooters++;
-            Util.Vec at = spawnPoint(w, 700, 950);
+            Util.Vec at = surge != null && rng.nextBoolean() ? around(w, surge.x, surge.y, Relay.RADIUS + 330, Relay.RADIUS + 520) : spawnPoint(w, 700, 950);
             spawn(w, t, at.x(), at.y(), 1, 1);
         }
+    }
+
+    /** A spot {@code min}..{@code max} from (x, y), on walkable ground (for a relay's surges). */
+    private Util.Vec around(World w, double x, double y, double min, double max) {
+        for (int tries = 0; tries < 30; tries++) {
+            double a = rng.nextDouble() * Math.PI * 2, d = min + rng.nextDouble() * (max - min);
+            double sx = x + Math.cos(a) * d, sy = y + Math.sin(a) * d;
+            if (w.level.contains(sx, sy) && w.level.contains(sx + 30, sy) && w.level.contains(sx - 30, sy)) return new Util.Vec(sx, sy);
+        }
+        return spawnPoint(w, 700, 950);
     }
 
     /** A spot {@code min}..{@code max} away from the player (just off-screen), on walkable ground. */
@@ -322,13 +345,12 @@ final class Run {
         }
     }
 
-    /** A ring of monsters closing in from every side at once. */
-    private void swarm(World w) {
+    /** A ring of monsters closing in from every side at once, round (x, y). */
+    private void swarm(World w, double x, double y) {
         int n = 14 + (int) (2 * threat());
-        Player p = w.player;
         for (int i = 0; i < n; i++) {
             double a = i * Math.PI * 2 / n;
-            Util.Vec at = w.level.clamp(p.x + Math.cos(a) * 560, p.y + Math.sin(a) * 560, 20);
+            Util.Vec at = w.level.clamp(x + Math.cos(a) * 560, y + Math.sin(a) * 560, 20);
             spawn(w, challenge.favoured == Enemy.Type.GRUNT ? Enemy.Type.RUNNER : challenge.favoured, at.x(), at.y(), 0.8, 1);
         }
         w.banner = "SWARM!";
@@ -344,11 +366,115 @@ final class Run {
         e.spawnIn = 0.9;
         w.banner = "ELITE!";
         w.bannerTimer = 2;
-        w.notice = "An elite " + (t == Enemy.Type.BRUTE ? "stump golem" : "snap-bloom") + " has appeared";
+        w.notice = "An elite " + creature(w.level.theme, t) + " has appeared";
         w.noticeHint = "It drops a treasure chest.";
         w.noticeTimer = 3.5;
         w.sound(Snd.BOSS_INTRO);
         w.effects.add(Effect.ring(at.x(), at.y(), 10, 120, 0.6, new Color(255, 210, 80), true));
+    }
+
+    /** What the people of a place call one of its monsters. */
+    static String creature(Theme theme, Enemy.Type t) {
+        return switch (theme) {
+            case FOREST -> switch (t) { case BRUTE -> "stump golem"; case SHOOTER -> "snap-bloom"; case RUNNER -> "blight fox"; default -> "thornling"; };
+            case CITY -> switch (t) { case BRUTE -> "living dumpster"; case SHOOTER -> "security drone"; case RUNNER -> "alley cat"; default -> "sewer rat"; };
+            case LAB -> switch (t) { case BRUTE -> "flesh golem"; case SHOOTER -> "spitter"; case RUNNER -> "crawler"; default -> "experiment"; };
+        };
+    }
+
+    // ------------------------------------------------------------------ relays
+
+    /** The relay that's switched on and still powering up, if any (only one at a time). */
+    Relay chargingRelay() {
+        for (Relay r : relays) if (r.charging()) return r;
+        return null;
+    }
+
+    /** The relay within reach that can be switched on, if any. */
+    Relay relayNearby(World w) {
+        for (Relay r : relays) if (!r.started && Util.dist(r.x, r.y, w.player.x, w.player.y) < 110) return r;
+        return null;
+    }
+
+    /** E at a relay: switch it on (unless another one is still powering up). */
+    private boolean switchOn(World w, Relay r) {
+        if (chargingRelay() != null) {
+            w.effects.add(Effect.text(r.x, r.y - 90, "Finish the relay you started first", new Color(230, 120, 120), false));
+            w.sound(Snd.MENU_DENY);
+            return true;
+        }
+        r.started = true;
+        w.notice = "RELAY SWITCHED ON";
+        w.noticeHint = "Stay inside its circle while it powers up. Here they come.";
+        w.noticeTimer = 4;
+        w.soundAt(Snd.BOSS_UNSEAL, r.x, r.y);
+        w.shake = Math.max(w.shake, 5);
+        w.effects.add(Effect.ring(r.x, r.y, 20, Relay.RADIUS, 0.5, RELAY_LIGHT, true));
+        return true;
+    }
+
+    static final Color RELAY_LIGHT = new Color(255, 222, 120);
+
+    /** The relay you switched on powers up while you're in its circle; its surges come at every quarter. */
+    private void updateRelays(World w, double dt) {
+        Relay r = chargingRelay();
+        for (Relay o : relays) o.held = false;
+        if (r == null) return;
+        Player p = w.player;
+        r.held = r.contains(p.x, p.y) && p.hp > 0;
+        if (r.held) r.charge = Math.min(1, r.charge + dt / Relay.CHARGE_TIME);
+        r.zap -= dt;
+        if (r.held && r.zap <= 0) {                                       // the Blight hates the light: inside the circle it's slowed and scorched
+            r.zap = Relay.ZAP_EVERY;
+            boolean any = false;
+            for (Enemy e : w.enemies) {
+                if (!e.targetable() || !r.contains(e.x, e.y)) continue;
+                double dmg = e.type.small() && !e.elite ? e.maxHp * 0.09 : e.maxHp * 0.02;
+                e.hurt(w, dmg, 0, 0, 0, RELAY_LIGHT, false, false);
+                e.slow(0.5, Relay.ZAP_EVERY + 0.2);
+                if (any || rng.nextInt(3) == 0) w.effects.add(Effect.spark(e.x, e.y - 10, rng.nextDouble() * Math.PI * 2, 60, 4, 0.3, RELAY_LIGHT));
+                any = true;
+            }
+            if (any) w.soundAt(Snd.ICE_TICK, r.x, r.y, 0, 0.5, 1.4);
+        }
+        int due = (int) (r.charge * 4);
+        if (due > r.surges && r.surges < 3) {
+            r.surges++;
+            swarm(w, r.x, r.y);
+            if (r.surges == 2) spawnElite(w);
+            else {
+                w.banner = "SURGE!";
+                w.bannerTimer = 1.6;
+            }
+        }
+        if (r.charge >= 1) relayDone(w, r);
+    }
+
+    /** Fully powered: it lights up for good, and its pulse flattens everything ordinary round it. */
+    private void relayDone(World w, Relay r) {
+        r.done = true;
+        nestsLeft--;
+        w.shake = Math.max(w.shake, 9);
+        w.effects.add(Effect.ring(r.x, r.y, 30, 760, 0.6, RELAY_LIGHT, true));
+        w.effects.add(Effect.ring(r.x, r.y, 20, Relay.RADIUS, 0.5, Color.WHITE, false));
+        w.soundAt(Snd.FIRE_EXPLODE, r.x, r.y, 0, 1, 0.8);
+        for (Enemy e : w.enemies) {
+            if (!e.targetable() || Util.dist(r.x, r.y, e.x, e.y) > 760) continue;
+            double big = e.type == Enemy.Type.BOSS || e.elite || e.rooted() ? e.maxHp * 0.15 : e.hp + 1;
+            e.hurt(w, big, 0, 0, 0.3, RELAY_LIGHT, true, false);
+        }
+        for (int i = 0; i < 5; i++) drop(w, new Pickup(Pickup.Kind.GEM, r.x, r.y, 14 + (int) (2 * threat())));
+        drop(w, new Pickup(Pickup.Kind.HEART, r.x, r.y, 0));
+        if (nestsLeft > 0) {
+            w.banner = "RELAY ONLINE";
+            w.bannerTimer = 2;
+            w.notice = (nestsTotal - nestsLeft) + " / " + nestsTotal + " RELAYS";
+            w.noticeHint = nestsLeft == 1 ? "One left." : nestsLeft + " left. Follow the arrows.";
+            w.noticeTimer = 3.5;
+            w.sound(Snd.ROOM_CLEAR);
+            return;
+        }
+        goalMet(w);
     }
 
     /** The last nest is down: everything ordinary drops its gem and vanishes, and the guardian arrives in a ring. */
@@ -508,12 +634,17 @@ final class Run {
             w.sound(Snd.ROOM_CLEAR);
             return;
         }
+        goalMet(w);
+    }
+
+    /** The last nest is down (or relay powered up): the guardian comes, or the way home opens. */
+    private void goalMet(World w) {
         w.sound(Snd.BOSS_UNSEAL);
         if (challenge.boss) {
             bossWarning = BOSS_WARNING;
             w.banner = "THE GROUND SHAKES";
             w.bannerTimer = 3;
-            w.notice = "Every nest is down... and something is coming";
+            w.notice = "Every " + (challenge.goal == Challenge.Goal.RELAYS ? "relay is on" : "nest is down") + "... and something is coming";
             w.noticeHint = "Get ready.";
             w.noticeTimer = BOSS_WARNING;
         } else {
@@ -540,7 +671,7 @@ final class Run {
         w.banner = boss ? "VICTORY!" : "CLEARED!";
         w.bannerTimer = 3;
         w.notice = "Open the chest, then step into the light";
-        w.noticeHint = "It leads back to the forest.";
+        w.noticeHint = "It leads back to " + (challenge.theme == Theme.CITY ? "the city." : "the forest.");
         w.noticeTimer = 6;
         w.sound(Snd.GUIDE_APPEAR, boss ? 2.4 : 0.6);
     }
@@ -561,8 +692,10 @@ final class Run {
         return null;
     }
 
-    /** E in a fight: open the cache you're standing at, if you can afford it. */
+    /** E in a fight: switch on the relay you're standing at, or open the cache, if you can afford it. */
     void interact(World w) {
+        Relay relay = relayNearby(w);
+        if (relay != null && switchOn(w, relay)) return;
         Pickup cache = cacheNearby(w);
         if (cache == null) return;
         if (gold < cache.value) {

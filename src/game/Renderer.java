@@ -27,6 +27,7 @@ final class Renderer {
     private final TitleScreen titleScreen = new TitleScreen();
     private final ArmoryScreen armoryScreen = new ArmoryScreen();
     private final WorldHud worldHud = new WorldHud();
+    private final Minimap bigMap = new Minimap();
     private BufferedImage vignetteImage;
 
     void render(World w, Graphics2D g, int width, int height) {
@@ -53,24 +54,30 @@ final class Renderer {
             g.fillRect(0, 0, width, height);
         }
         boolean screenUp = w.titleScene || w.state == World.State.TRAINER || w.state == World.State.SHOP || w.state == World.State.BRIEFING
-            || w.state == World.State.ARMORY || w.state == World.State.RESULTS;
+            || w.state == World.State.ARMORY || w.state == World.State.RESULTS || w.state == World.State.TRAVEL;
         if (w.run != null && w.state != World.State.RESULTS) runHud.drawHud(g, w, width, height);
         else if (!screenUp) worldHud.draw(g, w, width, height);
+        if (w.mapZoom > 0 && !screenUp) bigMap.draw(g, w, width, height);   // TAB held: the corner map, grown over the HUD
         if (w.dialogue.active() && w.state == World.State.PLAYING) drawDialogue(g, w.dialogue, TOWNSFOLK, width, height);
+        double talkBlack = w.talkBlack();
+        if (talkBlack > 0) {                                // into or out of a conversation: everything, the box too, goes black
+            double a = talkBlack * talkBlack * (3 - 2 * talkBlack);
+            g.setColor(new Color(0, 0, 0, (int) Math.round(255 * a)));
+            g.fillRect(0, 0, width, height);
+        }
         if (w.audio.muted) {
             g.setFont(f14b);
             g.setColor(new Color(255, 200, 120, 220));
             g.drawString("SOUND OFF  (M)", (float) (width - 140), (float) (height - 16));
         }
-        if (w.state == World.State.ARMORY) {
-            if (w.titleScene) titleScreen.drawBackdrop(g, w, width, height);
-            else MenuStyle.veil(g, width, height, 215);
-        }
+        if (w.state == World.State.ARMORY) MenuStyle.veil(g, width, height, 215);
         switch (w.state) {
             case TITLE -> titleScreen.draw(g, w, width, height);
+            case SLOTS -> titleScreen.drawSlots(g, w, width, height);
             case TRAINER -> worldHud.drawTrainer(g, w, width, height);
             case SHOP -> worldHud.drawShop(g, w, width, height);
             case BRIEFING -> worldHud.drawBriefing(g, w, width, height);
+            case TRAVEL -> worldHud.drawTravel(g, w, width, height);
             case PAUSE -> { if (w.run != null) runHud.drawRunPause(g, w, width, height); else worldHud.drawPause(g, w, width, height); }
             case LEVEL_UP -> runHud.drawChoices(g, w, width, height);
             case RESULTS -> runHud.drawRunEnd(g, w, width, height);
@@ -157,7 +164,7 @@ final class Renderer {
         Sprite face = Art.frame(line.portrait(), System.nanoTime() / 1e9, 2);
         java.awt.RenderingHints hints = g.getRenderingHints();
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-        face.draw(g, bx + 60 - (face.w / 2.0 - face.ax) * 3, by + 100, 3, false);
+        face.draw(g, bx + 60 - (face.w / 2.0 - face.ax) * 3 * face.k, by + 100, 3, false);   // centred, whatever the size of its pixels
         g.setRenderingHints(hints);
 
         // name tab

@@ -257,9 +257,19 @@ final class Enemy {
             double dx = p.x - x, dy = p.y - y;
             double dist = Math.max(0.001, Math.hypot(dx, dy));
             double ux = dx / dist, uy = dy / dist;
-            if (Math.abs(dx) > 3) faceLeft = dx < 0;                 // look toward the player
+            Util.Vec way = w.paths != null ? w.paths.direction(x, y, radius, p.x, p.y) : null;   // around the walls if they're in the way
+            if (way != null) {
+                boolean detour = way.x() * ux + way.y() * uy < 0.3;       // heading off sideways or back to get round something
+                ux = way.x();
+                uy = way.y();
+                if (detour && Math.abs(ux) > 0.2) faceLeft = ux < 0;      // look where it's going
+                else if (Math.abs(dx) > 3) faceLeft = dx < 0;
+            } else if (Math.abs(dx) > 3) {
+                faceLeft = dx < 0;                                     // look toward the player
+            }
             double speed = type.speed * (slowTimer > 0 ? slowMul : 1) * (intangible() ? 1.2 : 1);
 
+            // (ux, uy) is the way to walk to reach the player; dist is still the straight-line distance to them
             if (type == Type.BOSS) updateBoss(w, dt, p, ux, uy, dist, speed);
             else if (type == Type.SHOOTER) updateShooter(w, dt, ux, uy, dist, speed);
             else updateMelee(w, dt, p, ux, uy, dist, speed);

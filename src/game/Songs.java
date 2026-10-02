@@ -9,13 +9,17 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The game's four pieces of music, written out bar by bar.
+ * The game's pieces of music, written out bar by bar.
  *
  * <ul>
- *   <li><b>Forest</b> (G major, 96 bpm): a folk tune on flute over a harp and a warm pad. When a fight starts, frame
- *       drums, shakers, fiddles and a driving bass join in without the tune stopping.</li>
+ *   <li><b>Forest</b> (G major, 96 bpm): a folk tune on flute over a harp and a warm pad, for wandering the forest.</li>
+ *   <li><b>Forest battle</b> (D minor, 152 bpm): the fights. A driving piano ostinato and staccato strings in 3+3+2,
+ *       a soaring string melody, a heroic brass strain in the relative major, and orchestral drums.</li>
  *   <li><b>City</b> (A minor, 100 bpm): a lonely electric piano over a synth pad and echoing arpeggios; the fight adds a
  *       four-on-the-floor beat, a driving bass and a lead.</li>
+ *   <li><b>City battle</b> (A minor, 148 bpm): the city's fights. Electric piano comping, a walking bass and jazzy
+ *       stabs under a string melody that grows out of the city's own tune, a heroic brass strain in the relative
+ *       major, and the city's drum machine with a swung hat.</li>
  *   <li><b>Forest boss</b> (E minor, 120 bpm) and <b>city boss</b> (D minor, 128 bpm): brass and lead melodies over war
  *       drums; below half health the boss music gets a second, more frantic layer of parts.</li>
  * </ul>
@@ -26,14 +30,16 @@ import java.util.Map;
 final class Songs {
     private Songs() {}
 
-    enum Tune { FOREST, CITY, FOREST_BOSS, CITY_BOSS, LAB, LAB_BOSS }
+    enum Tune { FOREST, FOREST_BATTLE, CITY, CITY_BATTLE, FOREST_BOSS, CITY_BOSS, LAB, LAB_BOSS }
 
     private static final Map<Tune, Song> CACHE = new EnumMap<>(Tune.class);
 
     static synchronized Song get(Tune t) {
         return CACHE.computeIfAbsent(t, k -> switch (k) {
             case FOREST -> forest();
+            case FOREST_BATTLE -> forestBattle();
             case CITY -> city();
+            case CITY_BATTLE -> cityBattle();
             case FOREST_BOSS -> forestBoss();
             case CITY_BOSS -> cityBoss();
             case LAB -> lab();
@@ -55,7 +61,7 @@ final class Songs {
     }
 
     /** Whole-song level corrections in dB, so that (by A-weighted loudness) every piece of music is equally loud. */
-    private static final Map<String, Double> SONG_TRIM = Map.of("forest", 1.5, "city", -1.6, "forest-boss", 0.0, "city-boss", 0.2, "lab", 1.6, "lab-boss", 0.0);
+    private static final Map<String, Double> SONG_TRIM = Map.of("forest", 1.5, "forest-battle", -2.0, "city", -1.6, "city-battle", 0.8, "forest-boss", 0.0, "city-boss", 0.2, "lab", 1.6, "lab-boss", 0.0);
 
     /** Level corrections in dB per part, measured so every part sits where a mix engineer would put it. */
     private static final Map<String, Double> TRIM = new java.util.HashMap<>();
@@ -70,6 +76,18 @@ final class Songs {
         TRIM.put("forest/descant", 2.0);
         TRIM.put("forest/drums", -12.5);
         TRIM.put("forest/shaker", -2.5);
+        TRIM.put("forest-battle/pad", -8.5);
+        TRIM.put("forest-battle/piano", -3.5);
+        TRIM.put("forest-battle/left", 0.0);
+        TRIM.put("forest-battle/bass", -3.5);
+        TRIM.put("forest-battle/chop", -2.5);
+        TRIM.put("forest-battle/strings", -4.5);
+        TRIM.put("forest-battle/brass", -4.0);
+        TRIM.put("forest-battle/horns", -9.0);
+        TRIM.put("forest-battle/pulse", -5.0);
+        TRIM.put("forest-battle/drums", -12.0);
+        TRIM.put("forest-battle/hats", -5.0);
+        TRIM.put("forest-battle/open", -10.0);
         TRIM.put("city/pad", -12.0);
         TRIM.put("city/arp", -5.0);
         TRIM.put("city/arp16", -8.5);
@@ -81,6 +99,18 @@ final class Songs {
         TRIM.put("city/hatSoft", 1.5);
         TRIM.put("city/beat", -11.5);
         TRIM.put("city/hats", -2.0);
+        TRIM.put("city-battle/pad", -10.0);
+        TRIM.put("city-battle/keys", -8.5);
+        TRIM.put("city-battle/bass", -10.0);
+        TRIM.put("city-battle/stab", -7.0);
+        TRIM.put("city-battle/strings", -6.5);
+        TRIM.put("city-battle/brass", -6.5);
+        TRIM.put("city-battle/horns", -12.0);
+        TRIM.put("city-battle/arp", -7.5);
+        TRIM.put("city-battle/pulse", -10.0);
+        TRIM.put("city-battle/beat", -12.0);
+        TRIM.put("city-battle/hats", -6.5);
+        TRIM.put("city-battle/open", -11.0);
         TRIM.put("forest-boss/pad", -10.5);
         TRIM.put("forest-boss/bass", -8.0);
         TRIM.put("forest-boss/brass", -3.5);
@@ -152,6 +182,59 @@ final class Songs {
         return s;
     }
 
+    // ------------------------------------------------------------------ forest battle
+
+    /**
+     * The forest's fights (D minor, 152 bpm, 32 bars). Calm, it's just the piano's ostinato over a pad and a distant
+     * drum, waiting; in the fight proper the strings chop out a 3+3+2 rhythm under a soaring string melody, the brass
+     * takes the tune for a heroic strain in the relative major, and the drums drive it on. At the peak (taking a nest
+     * down) horns swell under everything and the cymbals open up.
+     */
+    private static Song forestBattle() {
+        Song s = new Song("forest-battle", 152, 32, 0.6, 0.5, 0.75);
+        s.fadeIn = 0.6;
+        List<String> chords = List.of("Dm", "Dm", "Bb", "C", "Dm", "Dm", "Gm", "A",
+                                      "Dm", "Bb", "F", "C", "Gm", "Dm", "Eb", "A",
+                                      "Bb", "C", "Am", "Dm", "Gm", "C", "F", "A",
+                                      "Bb", "Bb", "C", "C", "Dm", "Bb", "Gm", "A7");
+        s.chords.addAll(chords);
+        List<Note> strings = new ArrayList<>(Song.melody("""
+            A4:6 D5:2 F5:4 A5:4 | A5:2 G5:2 F5:2 E5:2 D5:8 | D5:4 F5:4 Bb5:6 A5:2 | G5:4 E5:4 C5:4 E5:2 F5:2 |
+            A5:6 F5:2 D6:6 C6:2 | A5:4 F5:4 D5:4 A4:4 | Bb4:4 D5:4 G5:6 F5:2 | E5:6 F5:2 E5:4 C#5:4 |
+            D6:6 C6:2 A5:4 F5:4 | F5:2 G5:2 F5:2 D5:2 Bb4:8 | C5:4 F5:4 A5:6 G5:2 | G5:4 E5:4 C6:8 |
+            Bb5:6 A5:2 G5:4 D5:4 | F5:4 A5:4 D6:4 A5:4 | G5:4 Bb5:4 Eb6:6 D6:2 | C#6:8 A5:4 E5:4
+            """, 0));
+        strings.addAll(Song.melody("""
+            D6:8 F6:4 D6:4 | Bb5:4 F5:2 G5:2 F5:8 | E5:4 G5:4 C6:8 | C6:2 D6:2 E6:4 G6:4 E6:4 |
+            F6:6 E6:2 D6:4 A5:4 | D6:6 C6:2 Bb5:4 F5:4 | G5:4 Bb5:4 D6:4 Bb5:4 | C#6:4 A5:2 G5:2 E5:4 C#5:4
+            """, 24));
+        List<Note> brass = Song.melody("""
+            F4:4 Bb4:4 D5:6 C5:2 | E5:3 E5:1 G5:4 C6:6 Bb5:2 | A5:6 E5:2 C5:4 E5:4 | F5:4 D5:2 E5:2 A4:8 |
+            G4:4 Bb4:4 D5:6 F5:2 | E5:4 G5:4 C6:6 D6:2 | C6:4 A5:4 F5:4 A5:4 | A5:6 G5:2 E5:4 C#5:4
+            """, 16);
+        layer(s, "pad", Inst.PAD_WARM, 0, 0.6, 0, 0.7, 0.55, 0.55, Song.pad(chords, 0.75f));
+        layer(s, "piano", Inst.PIANO, -0.15, 0.35, 0.05, 0.95, 0.85, 0.85,
+            Song.arp(chords, new int[]{0, 1, 2, 3, 1, 2, 3, 4, 2, 3, 4, 5, 4, 3, 2, 1}, 1, 2, 0, 0.8f));
+        layer(s, "left", Inst.PIANO, -0.1, 0.3, 0, 0.85, 0.55, 0.55, Song.bass(chords, "0:0:3 3:2:3 6:0:2 8:0:3 11:2:3 14:0:2", 0.9f));
+        layer(s, "bass", Inst.BASS_ROUND, 0, 0.05, 0, 0, 1.0, 1.0, Song.bass(chords, "0:0:2 3:0:2 6:0:2 8:0:2 11:0:2 14:1:2", 0.9f));
+        layer(s, "chop", Inst.STAB, 0.3, 0.25, 0, 0, 0.8, 0.9, Song.chug(chords, 1, 1, 0, 0.8f, "Xo.xo.Xo.xo.Xo.x"));
+        layer(s, "strings", Inst.STRINGS, 0.15, 0.5, 0.1, 0, 1.0, 1.0, strings);
+        layer(s, "brass", Inst.BRASS, -0.1, 0.4, 0.05, 0, 1.0, 1.0, brass);
+        layer(s, "horns", Inst.BRASS, -0.25, 0.5, 0, 0, 0, 0.6, Song.pad(chords, 0.55f));
+        layer(s, "pulse", Inst.DRUMS_WAR, 0, 0.25, 0, 0.55, 0, 0, Song.drums(36, "X.......x.......", 0, 32));
+        Layer drums = layer(s, "drums", Inst.DRUMS_WAR, 0, 0.2, 0, 0, 1.0, 1.0, new ArrayList<>());
+        for (int bar = 0; bar < 32; bar++) {
+            boolean phraseEnd = bar % 8 == 7;
+            drums.add(Song.drums(36, "X..x..x.X..x..x.", bar, bar + 1));
+            drums.add(Song.drums(38, phraseEnd ? "....X...xoxoXxXX" : "....X.......X...", bar, bar + 1));
+            if (phraseEnd) drums.add(Song.drums(45, "........x.x.....", bar, bar + 1));
+            if (phraseEnd) drums.add(Song.drums(41, "............x.x.", bar, bar + 1));
+        }
+        layer(s, "hats", Inst.DRUMS_WAR, 0.25, 0.1, 0, 0, 0.5, 0.85, Song.drums(42, "x.x.x.x.x.x.x.x.", 0, 32));
+        layer(s, "open", Inst.DRUMS_WAR, -0.25, 0.2, 0, 0, 0, 0.7, Song.drums(46, "..x...x...x...x.", 0, 32));
+        return s;
+    }
+
     // ------------------------------------------------------------------ city
 
     private static Song city() {
@@ -179,6 +262,47 @@ final class Songs {
         beat.add(Song.drums(38, "....X.......X...", 0, 16));
         beat.add(Song.drums(39, "....x.......x...", 0, 16));
         layer(s, "hats", Inst.DRUMS_ELECTRO, 0.25, 0.1, 0.1, 0, 0.8, 0.8, Song.drums(42, "x.xox.xox.xox.xo", 0, 16));
+        return s;
+    }
+
+    private static Song cityBattle() {
+        Song s = new Song("city-battle", 148, 32, 0.6, 0.55, 0.75);
+        s.fadeIn = 0.6;
+        List<String> chords = List.of("Am", "Am", "F", "G", "Am", "Am", "Dm", "E",
+                                      "F", "G", "Em", "Am", "Dm", "E", "Am", "E7",
+                                      "F", "G", "C", "Am", "Dm", "G", "C", "E",
+                                      "F", "G", "Em", "Am", "Dm", "Bb", "E", "E7");
+        s.chords.addAll(chords);
+        List<Note> strings = Song.melody("""
+            E5:3 E5:3 A5:2 C6:4 A5:2 B5:2 | E5:6 C5:2 A4:8 | F5:3 F5:3 A5:2 C6:4 A5:4 | B5:4 D6:4 G5:8 |
+            A5:3 G5:3 E5:2 C5:4 E5:4 | A5:6 B5:2 C6:8 | D6:4 A5:2 C6:2 F5:4 A5:4 | G#5:8 B5:4 E6:4 |
+            C6:6 A5:2 F5:4 A5:4 | B5:6 G5:2 D5:4 G5:4 | E5:4 G5:4 B5:6 A5:2 | A5:8 E5:4 C5:4 |
+            D5:4 F5:4 A5:4 D6:4 | E6:4 B5:2 D6:2 G#5:4 E5:4 | A5:6 C6:2 E6:8 | D6:4 B5:4 G#5:4 E5:4
+            """, 0);
+        List<Note> brass = Song.melody("""
+            A4:4 C5:4 F5:6 E5:2 | D5:4 G5:4 B5:6 A5:2 | G5:4 E5:4 C6:8 | C6:4 A5:2 B5:2 E5:8 |
+            F5:4 A5:4 D6:6 C6:2 | B5:4 G5:4 D5:4 G5:4 | E5:4 G5:4 C6:4 E6:4 | E6:6 D6:2 B5:4 G#5:4 |
+            A5:6 C6:2 F6:8 | D6:4 B5:4 G5:4 B5:4 | B5:6 A5:2 G5:4 E5:4 | A5:4 C6:4 E6:8 |
+            F6:6 E6:2 D6:4 A5:4 | D6:4 Bb5:4 F5:4 Bb5:4 | G#5:6 B5:2 E6:8 | D6:4 B5:4 G#5:4 E5:4
+            """, 16);
+        layer(s, "pad", Inst.PAD_SYNTH, 0, 0.6, 0, 0.6, 0.5, 0.5, Song.pad(chords, 0.75f));
+        layer(s, "keys", Inst.EPIANO, -0.15, 0.4, 0.2, 0.95, 0.8, 0.8, Song.chug(chords, 1, 2, 0, 0.8f, "X..x..x...X.x..."));
+        layer(s, "bass", Inst.BASS_ROUND, 0, 0.05, 0, 0.6, 1.0, 1.0, Song.bass(chords, "0:0:3 4:1:3 8:2:3 12:1:2 14:0:2", 0.9f));
+        layer(s, "stab", Inst.STAB, 0.3, 0.25, 0.1, 0, 0.75, 0.85, Song.chug(chords, 1, 1, 1, 0.8f, "..X...X..X....X."));
+        layer(s, "strings", Inst.STRINGS, 0.15, 0.5, 0.1, 0, 1.0, 1.0, strings);
+        layer(s, "brass", Inst.BRASS, -0.1, 0.4, 0.05, 0, 1.0, 1.0, brass);
+        layer(s, "horns", Inst.BRASS, -0.25, 0.5, 0, 0, 0, 0.6, Song.pad(chords, 0.55f));
+        layer(s, "arp", Inst.ARP_SYNTH, -0.3, 0.3, 0.45, 0, 0, 0.6, Song.arp(chords, new int[]{0, 1, 2, 3, 4, 3, 2, 1}, 1, 1, 0, 0.7f));
+        layer(s, "pulse", Inst.DRUMS_ELECTRO, 0, 0.1, 0, 0.5, 0, 0, Song.drums(36, "X.......X.......", 0, 32));
+        Layer beat = layer(s, "beat", Inst.DRUMS_ELECTRO, 0, 0.12, 0, 0, 1.0, 1.0, new ArrayList<>());
+        for (int bar = 0; bar < 32; bar++) {
+            boolean phraseEnd = bar % 8 == 7;
+            beat.add(Song.drums(36, "X.....X...X.....", bar, bar + 1));
+            beat.add(Song.drums(38, phraseEnd ? "....X.......XxXX" : "....X.......X...", bar, bar + 1));
+            beat.add(Song.drums(39, "....x.......x...", bar, bar + 1));
+        }
+        layer(s, "hats", Inst.DRUMS_ELECTRO, 0.25, 0.1, 0.1, 0, 0.75, 0.85, Song.drums(42, "x.xxx.xxx.xxx.xx", 0, 32));
+        layer(s, "open", Inst.DRUMS_ELECTRO, -0.2, 0.15, 0, 0, 0, 0.7, Song.drums(46, "..x...x...x...x.", 0, 32));
         return s;
     }
 

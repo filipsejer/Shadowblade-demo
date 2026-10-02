@@ -11,7 +11,7 @@ final class GameAudio {
     private final AudioEngine engine;
     private Songs.Tune tune;
     private Song.Mood mood;
-    private boolean paused, first = true;
+    private boolean paused, hushed, first = true;
     private int bed = -1;
     private double bedLevel = -1;
     private final java.util.Random rng = new java.util.Random(5);
@@ -30,6 +30,10 @@ final class GameAudio {
             tune = c.tune();
             mood = c.mood();
             paused = c.paused();
+        }
+        if (first || c.hushed() != hushed) {
+            engine.setMusicHushed(c.hushed());
+            hushed = c.hushed();
         }
         if (first || c.bed() != bed || Math.abs(c.bedLevel() - bedLevel) > 0.001) {
             engine.setAmbience(c.bed(), c.bedLevel());

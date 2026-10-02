@@ -21,6 +21,10 @@ final class Music {
     private Mood mood = Mood.CALM;
     private boolean paused;
     private double pauseAmount;                                   // 0 = normal, 1 = fully ducked and muffled
+    private boolean hushed;
+    private double hush;                                          // 0 = playing, 1 = silent and holding its place
+    /** Seconds the music takes to fade out when hushed, and to come back. */
+    static final double HUSH_OUT = 0.5, HUSH_IN = 0.9;
     private final Dsp.Biquad muffleL = new Dsp.Biquad(), muffleR = new Dsp.Biquad();
     private final Dsp.HighPass dcL = new Dsp.HighPass(20), dcR = new Dsp.HighPass(20);
     private final float[] playerL = new float[MAX_BLOCK], playerR = new float[MAX_BLOCK];
@@ -50,6 +54,11 @@ final class Music {
 
     void setPaused(boolean paused) { this.paused = paused; }
 
+    /** Hushed, the music fades to silence and stops where it is; lifted, it fades back in from there. */
+    void setHushed(boolean hushed) { this.hushed = hushed; }
+
+    boolean silent() { return hush >= 1; }
+
     String songId() { return current == null ? null : current.song.id; }
 
     Mood mood() { return mood; }
@@ -63,7 +72,7 @@ final class Music {
             int chunk = Math.min(MAX_BLOCK, n - done);
             java.util.Arrays.fill(playerL, 0, chunk, 0f);
             java.util.Arrays.fill(playerR, 0, chunk, 0f);
-            if (current != null) current.render(playerL, playerR, chunk);
+            if (current != null && hush < 1) current.render(playerL, playerR, chunk);   // fully hushed, the song holds its place
             for (int i = fading.size() - 1; i >= 0; i--) {
                 SongPlayer p = fading.get(i);
                 p.render(playerL, playerR, chunk);
@@ -88,6 +97,16 @@ final class Music {
             } else {
                 muffleL.reset();
                 muffleR.reset();
+            }
+            double hush0 = hush;
+            hush = hushed ? Math.min(1, hush + chunk / (SRD * HUSH_OUT)) : Math.max(0, hush - chunk / (SRD * HUSH_IN));
+            if (hush0 > 0 || hush > 0) {                            // eased, sample by sample, so the fade never clicks
+                for (int i = 0; i < chunk; i++) {
+                    double h = 1 - (hush0 + (hush - hush0) * i / chunk);
+                    float gain = (float) (h * h * (3 - 2 * h));
+                    playerL[i] *= gain;
+                    playerR[i] *= gain;
+                }
             }
             for (int i = 0; i < chunk; i++) {
                 l[done + i] += playerL[i];

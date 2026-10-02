@@ -15,19 +15,22 @@ import java.util.Random;
 import java.util.Set;
 
 /**
- * Where you are in the story: what's happened (flags such as {@code "met.rowan"}), which chests you've opened, which
- * challenges you've cleared and how often, your skill points and the {@link Mastery} ranks you've bought, the
- * merchant's stock, and where you stood when you last saved. Gold and equipment live in the {@link Profile}; the two
- * files together are the save game ({@code adventure.properties} and {@code profile.properties}).
+ * Where you are in the story: what's happened (flags such as {@code "met.rowan"}), which chests you've opened and
+ * which areas you've seen, which challenges you've cleared and how often, your skill points and the {@link Mastery}
+ * ranks you've bought, the merchant's stock, and where you stood when you last saved. Gold and equipment live in the
+ * {@link Profile}; the two files together are the save game ({@code adventure.properties} and {@code profile.properties}).
  */
 final class Adventure {
     final Set<String> flags = new LinkedHashSet<>();
     final Set<String> opened = new LinkedHashSet<>();
+    /** The areas of the world you've walked into (by name): the minimap remembers them. */
+    final Set<String> visited = new LinkedHashSet<>();
     final Map<String, Integer> clears = new HashMap<>();
     int skillPoints;
     final int[] mastery = new int[Mastery.values().length];
-    /** Where the hero stands in the explorable world (NaN: at the world's own starting point). */
-    double x = Double.NaN, y = Double.NaN;
+    /** The world you're in ({@link Worlds#of}), and where you stood in each one you've been to. */
+    String world = Worlds.FOREST;
+    private final Map<String, double[]> spots = new HashMap<>();
     /** Bramble's wares, and how many restocks there have been (it changes each time a challenge is cleared). */
     final List<Item> stock = new ArrayList<>();
     int restocks;
@@ -40,6 +43,14 @@ final class Adventure {
     int clears(Challenge c) { return clears.getOrDefault(c.id, 0); }
 
     int rank(Mastery m) { return mastery[m.ordinal()]; }
+
+    /** Where you last stood in a world, or null (you'd arrive at its own starting point). */
+    double[] spot(String w) { return spots.get(w); }
+
+    void setSpot(String w, double x, double y) { spots.put(w, new double[]{x, y}); }
+
+    /** Forgets where you stood in a world, so you arrive at its entrance next time. */
+    void clearSpot(String w) { spots.remove(w); }
 
     /** Puts a fresh set of four items on the merchant's table: mostly common and uncommon, a rare now and then. */
     void restock() {
@@ -65,27 +76,22 @@ final class Adventure {
 
     // ------------------------------------------------------------------ saving
 
-    static Path file() { return Profile.home().resolve("adventure.properties"); }
-
-    static boolean saved() { return Files.exists(file()); }
-
-    static void delete() {
-        try {
-            Files.deleteIfExists(file());
-        } catch (IOException ignored) { }
-    }
+    /** The save slot in use's story file (see {@link Saves}). */
+    static Path file() { return Saves.dir().resolve("adventure.properties"); }
 
     void save(Path path) {
         Properties p = new Properties();
         p.setProperty("version", "1");
         p.setProperty("flags", String.join(",", flags));
         p.setProperty("opened", String.join(",", opened));
+        p.setProperty("visited", String.join(",", visited));
         for (Map.Entry<String, Integer> e : clears.entrySet()) p.setProperty("clears." + e.getKey(), String.valueOf(e.getValue()));
         p.setProperty("skillPoints", String.valueOf(skillPoints));
         for (Mastery m : Mastery.values()) if (mastery[m.ordinal()] > 0) p.setProperty("mastery." + m.name(), String.valueOf(mastery[m.ordinal()]));
-        if (!Double.isNaN(x)) {
-            p.setProperty("x", String.valueOf(x));
-            p.setProperty("y", String.valueOf(y));
+        p.setProperty("world", world);
+        for (Map.Entry<String, double[]> e : spots.entrySet()) {
+            p.setProperty("x." + e.getKey(), String.valueOf(e.getValue()[0]));
+            p.setProperty("y." + e.getKey(), String.valueOf(e.getValue()[1]));
         }
         p.setProperty("restocks", String.valueOf(restocks));
         p.setProperty("stock", String.valueOf(stock.size()));
@@ -113,16 +119,16 @@ final class Adventure {
         Adventure a = new Adventure();
         for (String f : p.getProperty("flags", "").split(",")) if (!f.isBlank()) a.flags.add(f.trim());
         for (String f : p.getProperty("opened", "").split(",")) if (!f.isBlank()) a.opened.add(f.trim());
+        for (String f : p.getProperty("visited", "").split(",")) if (!f.isBlank()) a.visited.add(f.trim());
         for (Challenge c : Challenge.values()) {
             int n = Profile.intOf(p, "clears." + c.id);
             if (n > 0) a.clears.put(c.id, n);
         }
         a.skillPoints = Math.max(0, Profile.intOf(p, "skillPoints"));
         for (Mastery m : Mastery.values()) a.mastery[m.ordinal()] = Math.max(0, Math.min(m.maxRank, Profile.intOf(p, "mastery." + m.name())));
-        if (p.getProperty("x") != null) {
-            a.x = Run.parse(p, "x");
-            a.y = Run.parse(p, "y");
-        }
+        a.world = Worlds.exists(p.getProperty("world")) ? p.getProperty("world") : Worlds.FOREST;
+        for (String w : Worlds.IDS) if (p.getProperty("x." + w) != null) a.setSpot(w, Run.parse(p, "x." + w), Run.parse(p, "y." + w));
+        if (p.getProperty("x") != null) a.setSpot(Worlds.FOREST, Run.parse(p, "x"), Run.parse(p, "y"));   // (a save from before there were other worlds)
         a.restocks = Profile.intOf(p, "restocks");
         for (int i = 0; i < Profile.intOf(p, "stock"); i++) {
             Item it = Item.decode(p.getProperty("stock." + i, ""));
@@ -132,14 +138,5 @@ final class Adventure {
         a.fights = Profile.intOf(p, "fights");
         a.wins = Profile.intOf(p, "wins");
         return a;
-    }
-
-    /** The main menu's line about the save ("Mossbrook" + progress), or null when there isn't one. */
-    static String describeSaved() {
-        Adventure a = load(file());
-        if (a == null) return null;
-        int done = 0;
-        for (Challenge c : Challenge.values()) if (a.clears(c) > 0) done++;
-        return "The Whispering Forest   -   " + done + " / " + Challenge.values().length + " challenges   -   " + a.skillPoints + " SP";
     }
 }

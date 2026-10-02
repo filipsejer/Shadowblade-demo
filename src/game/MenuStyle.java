@@ -392,4 +392,14 @@ final class MenuStyle {
         }
         return y;
     }
+
+    /** "THE WARDEN" as "The Warden". */
+    static String titleCase(String s) {
+        StringBuilder b = new StringBuilder();
+        for (String word : s.toLowerCase().split(" ")) {
+            if (b.length() > 0) b.append(' ');
+            if (!word.isEmpty()) b.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
+        }
+        return b.toString();
+    }
 }

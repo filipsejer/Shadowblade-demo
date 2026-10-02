@@ -13,21 +13,38 @@ import java.util.Random;
 final class World {
     /**
      * TITLE is the main menu. PLAYING is either walking around an explorable world ({@link #run} null) or a fight
-     * ({@link #run} set). TRAINER, SHOP and BRIEFING are the world's screens (Ranger Ash, Bramble's table, the card
-     * before a challenge); LEVEL_UP is a fight's choice of perks, RESULTS its end; ARMORY the equipment screen.
+     * ({@link #run} set). TRAINER, SHOP, BRIEFING and TRAVEL are the world's screens (the trainer, the merchant's table,
+     * the card before a challenge, the map of the worlds); LEVEL_UP is a fight's choice of perks, RESULTS its end;
+     * ARMORY the equipment screen; SLOTS the main menu's choice of save slot (for a new game, or to load one).
      */
-    enum State { TITLE, PLAYING, PAUSE, LEVEL_UP, RESULTS, ARMORY, TRAINER, SHOP, BRIEFING }
+    enum State { TITLE, PLAYING, PAUSE, LEVEL_UP, RESULTS, ARMORY, TRAINER, SHOP, BRIEFING, TRAVEL, SLOTS }
 
     final Random rng = new Random();
 
     State state = State.TITLE;
     Level level;
     double fade;                    // 1 -> 0 after travelling somewhere: a black screen fading in
+    /**
+     * Where an important conversation (the story, a quest) is: the screen goes black and the music hushes on the way in,
+     * and again on the way out. Small talk just puts the box up.
+     */
+    enum Talk { NONE, ENTERING, TALKING, LEAVING, RETURNING }
+    Talk talk = Talk.NONE;
+    private double talkTime;        // seconds into the current part of the conversation
+    /** Seconds the screen takes to go black (or come back), and how long it stays black between. */
+    static final double TALK_FADE = 0.4, TALK_HOLD = 0.15;
     Player player;
     final List<Enemy> enemies = new ArrayList<>();
     final List<Projectile> projectiles = new ArrayList<>();
     final List<Zone> zones = new ArrayList<>();
     final List<Effect> effects = new ArrayList<>();
+    /** Holding TAB grows the corner map into a big one: how far it has grown, 0..1. */
+    double mapZoom;
+    /** Seconds TAB has been held. In a fight a quick tap still locks on; holding it longer than this opens the map. */
+    private double tabHeld;
+    static final double MAP_HOLD = 0.2;
+    /** How the horde finds its way to you around the walls of a battlefield (null in the explorable world). */
+    PathField paths;
 
     /** A sound the game wants played. The sound engine turns these into audio (see {@link GameAudio}); the world just says what happened. */
     record Cue(Snd snd, double x, double y, boolean positional, double delay, double gain, double rate) {}
@@ -47,15 +64,18 @@ final class World {
     Profile profile = new Profile();
     /** Set by QUIT on the main menu; the window closes itself when it sees it. */
     boolean quitRequested;
-    /** The main menu's line about the saved game, or null when there's nothing to continue. */
-    String savedGame;
-    /** NEW GAME pressed once over an existing save: the next press confirms throwing it away. */
-    boolean confirmNew;
-    /** The Armory: which row of the bag is selected, a line of feedback, a salvage waiting for its confirming press, and where ESC goes back to. */
+    /** The game CONTINUE would pick up (the save slot played last), or null when there's nothing to continue. */
+    Saves.Summary savedGame;
+    /** The save slots screen: what's in each slot, which is picked, whether it's for a new game (or to load one), and an
+     *  overwrite or delete waiting for its confirming press. */
+    final Saves.Summary[] slots = new Saves.Summary[Saves.COUNT];
+    int slotCursor;
+    boolean slotsForNew;
+    boolean confirmSlot;
+    /** The Armory (EQUIPMENT in the pause menu): which row of the bag is selected, a line of feedback, a salvage waiting for its confirming press. */
     int armoryCursor;
     String armoryMessage = "";
     boolean confirmSalvage;
-    State armoryReturn = State.TITLE;
     /** A fight's pause menu: a retreat waiting for its confirming press. */
     boolean confirmRetreat;
     /** Counts down on the results screen, which ignores every key until it runs out. */
@@ -66,6 +86,8 @@ final class World {
     String screenMessage = "";
     /** The challenge whose briefing card is up. */
     Challenge briefing;
+    /** The map of the worlds: which world is picked (an index into {@link Worlds#IDS}). */
+    int travelCursor;
 
     Enemy lockTarget;
     double camX, camY;
@@ -93,7 +115,7 @@ final class World {
     static final double INTERACT_RANGE = 95;
 
     World() {
-        profile = Profile.load(Profile.file());
+        Saves.migrate();
         showTitle();
         fade = 1.6;                                   // the very first screen fades in from black
     }
@@ -108,6 +130,7 @@ final class World {
         effects.clear();
         lockTarget = null;
         dialogue.clear();
+        talk = Talk.NONE;
         banner = notice = noticeHint = "";
         bannerTimer = noticeTimer = 0;
         shake = hitStop = 0;
@@ -154,15 +177,18 @@ final class World {
         overTimer = Math.max(0, overTimer - dt);
         fade = Math.max(0, fade - dt / 0.9);
         if (in.pressed(KeyEvent.VK_M)) audio.toggleMute();
+        updateMapKey(dt, in);
         switch (state) {
             case TITLE -> { animateTitleScene(dt); updateMainMenu(in); }
+            case SLOTS -> { animateTitleScene(dt); updateSlots(in); }
             case PLAYING -> updatePlaying(dt, in);
             case PAUSE -> updatePause(in);
             case LEVEL_UP -> run.updateChoices(this, in, dt);
-            case ARMORY -> { animateTitleScene(dt); updateArmory(in); }
+            case ARMORY -> updateArmory(in);
             case TRAINER -> updateTrainer(in);
             case SHOP -> updateShop(in);
             case BRIEFING -> updateBriefing(in);
+            case TRAVEL -> updateTravel(in);
             case RESULTS -> {
                 updateEffects(dt);
                 if (overTimer <= 0 && (in.pressed(KeyEvent.VK_ENTER) || in.pressed(KeyEvent.VK_ESCAPE) || in.pressed(KeyEvent.VK_SPACE) || in.pressed(KeyEvent.VK_E))) {
@@ -179,32 +205,95 @@ final class World {
     // ------------------------------------------------------------------ the main menu
 
     /** The main menu's rows, top to bottom. */
-    static final String[] MAIN_MENU = {"NEW GAME", "CONTINUE", "ARMORY", "QUIT"};
+    static final String[] MAIN_MENU = {"NEW GAME", "CONTINUE", "LOAD GAME", "QUIT"};
 
-    /** W/S choose, ENTER picks. NEW GAME over an existing save asks for a second press first. */
+    /** W/S choose, ENTER picks. NEW GAME and LOAD GAME go to the save slots; CONTINUE picks the last game played back up. */
     private void updateMainMenu(Input in) {
         int rows = MAIN_MENU.length;
-        if (in.pressed(KeyEvent.VK_DOWN) || in.pressed(KeyEvent.VK_S)) { menuCursor = (menuCursor + 1) % rows; confirmNew = false; sound(Snd.MENU_MOVE); }
-        if (in.pressed(KeyEvent.VK_UP) || in.pressed(KeyEvent.VK_W)) { menuCursor = (menuCursor + rows - 1) % rows; confirmNew = false; sound(Snd.MENU_MOVE); }
-        if (in.pressed(KeyEvent.VK_ESCAPE)) confirmNew = false;
+        if (in.pressed(KeyEvent.VK_DOWN) || in.pressed(KeyEvent.VK_S)) { menuCursor = (menuCursor + 1) % rows; sound(Snd.MENU_MOVE); }
+        if (in.pressed(KeyEvent.VK_UP) || in.pressed(KeyEvent.VK_W)) { menuCursor = (menuCursor + rows - 1) % rows; sound(Snd.MENU_MOVE); }
         if (!(in.pressed(KeyEvent.VK_ENTER) || in.pressed(KeyEvent.VK_SPACE))) return;
         in.consume(KeyEvent.VK_ENTER, KeyEvent.VK_SPACE);
         switch (menuCursor) {
-            case 0 -> {
-                if (savedGame != null && !confirmNew) {
-                    confirmNew = true;
-                    sound(Snd.MENU_DENY);
-                } else {
-                    newGame();
-                }
-            }
+            case 0 -> openSlots(true);
             case 1 -> {
                 if (savedGame == null) sound(Snd.MENU_DENY);
                 else continueGame();
             }
-            case 2 -> openArmory(State.TITLE);
+            case 2 -> {
+                if (savedGame == null) sound(Snd.MENU_DENY);
+                else openSlots(false);
+            }
             default -> quitRequested = true;
         }
+    }
+
+    // ------------------------------------------------------------------ the save slots
+
+    /** The save slots, for a new game (on the first empty slot) or to load one (on the last game played). */
+    void openSlots(boolean forNew) {
+        slotsForNew = forNew;
+        confirmSlot = false;
+        readSlots();
+        slotCursor = -1;
+        if (forNew) for (int i = 0; i < Saves.COUNT && slotCursor < 0; i++) if (slots[i] == null) slotCursor = i;
+        if (slotCursor < 0) slotCursor = Math.max(0, Saves.last() - 1);
+        state = State.SLOTS;
+        sound(Snd.MENU_OPEN);
+    }
+
+    private void readSlots() {
+        for (int i = 0; i < Saves.COUNT; i++) slots[i] = Saves.describe(i + 1);
+    }
+
+    /**
+     * W/S pick a slot. ENTER starts a new game there (a second press to overwrite one that's taken) or loads it; X (twice)
+     * deletes a game; ESC goes back to the main menu.
+     */
+    private void updateSlots(Input in) {
+        int n = Saves.COUNT;
+        if (in.pressed(KeyEvent.VK_ESCAPE)) {
+            if (confirmSlot) confirmSlot = false;
+            else {
+                int cursor = menuCursor;
+                state = State.TITLE;
+                refreshTitle();
+                menuCursor = cursor == 2 && savedGame == null ? 0 : cursor;     // (back where you were, unless you deleted every game)
+            }
+            sound(Snd.MENU_BACK);
+            return;
+        }
+        if (in.pressed(KeyEvent.VK_DOWN) || in.pressed(KeyEvent.VK_S)) { slotCursor = (slotCursor + 1) % n; confirmSlot = false; sound(Snd.MENU_MOVE); }
+        if (in.pressed(KeyEvent.VK_UP) || in.pressed(KeyEvent.VK_W)) { slotCursor = (slotCursor + n - 1) % n; confirmSlot = false; sound(Snd.MENU_MOVE); }
+        Saves.Summary here = slots[slotCursor];
+        if (in.pressed(KeyEvent.VK_X) && !slotsForNew) {
+            if (here == null) { sound(Snd.MENU_DENY); return; }
+            if (!confirmSlot) { confirmSlot = true; sound(Snd.MENU_DENY); return; }
+            Saves.delete(slotCursor + 1);
+            confirmSlot = false;
+            readSlots();
+            sound(Snd.CRATE_SMASH);
+            return;
+        }
+        if (!(in.pressed(KeyEvent.VK_ENTER) || in.pressed(KeyEvent.VK_SPACE) || in.pressed(KeyEvent.VK_E))) return;
+        in.consume(KeyEvent.VK_ENTER, KeyEvent.VK_SPACE, KeyEvent.VK_E);
+        if (slotsForNew) {
+            if (here != null && !confirmSlot) { confirmSlot = true; sound(Snd.MENU_DENY); return; }
+            newGame(slotCursor + 1);
+        } else if (here == null || confirmSlot) {
+            sound(Snd.MENU_DENY);
+        } else {
+            loadGame(slotCursor + 1);
+        }
+    }
+
+    /** The main menu's view of the saves: the last game played (for CONTINUE and the corner card) and its gear. */
+    private void refreshTitle() {
+        int last = Saves.last();
+        savedGame = last > 0 ? Saves.describe(last) : null;
+        if (last > 0) Saves.select(last);
+        profile = savedGame != null ? savedGame.profile() : new Profile();
+        menuCursor = savedGame != null ? 1 : 0;
     }
 
     /** True while the menus' backdrop is up: the hero in a forest clearing with the horde circling (see {@link #showTitle}). */
@@ -221,9 +310,8 @@ final class World {
         run = null;
         adventure = null;
         state = State.TITLE;
-        confirmNew = confirmRetreat = confirmSalvage = false;
-        savedGame = Adventure.describeSaved();
-        menuCursor = savedGame != null ? 1 : 0;
+        confirmSlot = confirmRetreat = confirmSalvage = false;
+        refreshTitle();
         titleScene = true;
         time = 0;
         kills = 0;
@@ -267,9 +355,13 @@ final class World {
         }
     }
 
-    /** A brand-new adventure: no gold, no gear, at the edge of Mossbrook. Throws away any saved game. */
-    void newGame() {
-        Adventure.delete();
+    /** A brand-new adventure in the save slot in use (see {@link #newGame(int)}). */
+    void newGame() { newGame(Saves.slot()); }
+
+    /** A brand-new adventure in a save slot: no gold, no gear, at the edge of Mossbrook. Throws away the game that was there. */
+    void newGame(int slot) {
+        Saves.use(slot);
+        Saves.delete(slot);
         Run.delete(Profile.home().resolve("run.properties"));          // (a save from before the adventure, if there is one)
         profile = new Profile();
         adventure = new Adventure();
@@ -280,8 +372,20 @@ final class World {
         sound(Snd.TITLE_START);
     }
 
-    /** Picks the saved game back up, where you stood when it was saved. */
+    /** Picks the last game played back up, where you stood when it was saved. */
     void continueGame() {
+        int last = Saves.last();
+        if (last == 0) {
+            savedGame = null;
+            sound(Snd.MENU_DENY);
+            return;
+        }
+        loadGame(last);
+    }
+
+    /** Picks a save slot's game up, where you stood when it was saved. */
+    void loadGame(int slot) {
+        Saves.use(slot);
         Adventure a = Adventure.load(Adventure.file());
         if (a == null) {
             savedGame = null;
@@ -297,20 +401,25 @@ final class World {
         sound(Snd.TITLE_START);
     }
 
-    /** Into the explorable world, wherever the adventure says you were standing (or the start). */
+    /** Into the adventure's explorable world, wherever it says you were standing there (or the world's start). */
     private void enterWorld() {
         clearField();
         titleScene = false;
         focusX = focusY = Double.NaN;
         run = null;
-        level = Worlds.forest();
-        double x = Double.isNaN(adventure.x) ? level.spawnX : adventure.x, y = Double.isNaN(adventure.y) ? level.spawnY : adventure.y;
+        level = Worlds.of(adventure.world);
+        double[] spot = adventure.spot(adventure.world);
+        double x = spot == null ? level.spawnX : spot[0], y = spot == null ? level.spawnY : spot[1];
         Util.Vec v = level.clamp(x, y, 15);
         player = worldPlayer(v.x(), v.y());
         camX = player.x;
         camY = player.y;
+        for (Level.Room r : level.rooms) if (adventure.visited.contains(r.name)) r.visited = true;   // the minimap remembers where you've been
         area = level.roomAt(player.x, player.y, 0);
-        if (area != null) area.visited = true;
+        if (area != null) {
+            area.visited = true;
+            adventure.visited.add(area.name);
+        }
         banner = level.name;
         bannerTimer = 3;
         fade = 1;
@@ -328,10 +437,7 @@ final class World {
     /** Writes the game: where you stand (the gate you went through, during a fight), the story, gold and gear. */
     void saveGame() {
         if (adventure == null) return;
-        if (run == null && level != null && level.explorable && player != null) {
-            adventure.x = player.x;
-            adventure.y = player.y;
-        }
+        if (run == null && level != null && level.explorable && player != null) adventure.setSpot(level.world, player.x, player.y);
         adventure.save(Adventure.file());
         profile.save(Profile.file());
     }
@@ -347,16 +453,16 @@ final class World {
             return;
         }
         if (run != null) {
-            if (in.pressed(KeyEvent.VK_TAB)) {
-                cycleLock();
-                if (lockTarget != null) sound(Snd.LOCK_ON);
-            }
             if (in.pressed(KeyEvent.VK_Q)) {
                 if (lockTarget != null) sound(Snd.LOCK_OFF);
                 lockTarget = null;
             }
             if (in.pressed(KeyEvent.VK_E)) run.interact(this);
         } else {
+            if (updateTalk(dt, in)) {                                     // a conversation, and the fades either side of it
+                updateEffects(dt);
+                return;
+            }
             dialogue.update(this, in, dt);                                // somebody talking
             if (dialogue.stopsWorld()) {
                 updateEffects(dt);
@@ -374,6 +480,12 @@ final class World {
         bannerTimer = Math.max(0, bannerTimer - dt);
         noticeTimer = Math.max(0, noticeTimer - dt);
         player.update(this, in, dt);
+        if (run != null) {                                          // the routes to wherever you're standing now
+            if (paths == null || !paths.fits(level)) paths = new PathField(level);
+            paths.update(this, dt);
+        } else {
+            paths = null;
+        }
         for (Enemy e : enemies) e.update(this, dt);
         enemies.addAll(arrivals);                       // creatures the boss summoned this frame join the fight now that the loop is over
         arrivals.clear();
@@ -400,6 +512,85 @@ final class World {
         run.maybeOpenChoices(this);
     }
 
+    /**
+     * Moves a conversation along. On the way in the screen goes black before the first line appears, then fades back
+     * up with the box on screen; dismissing the last line fades to black again with it still showing, and the world
+     * fades back in. True while the world should stand still.
+     */
+    private boolean updateTalk(double dt, Input in) {
+        talkTime += dt;
+        switch (talk) {
+            case NONE -> { return false; }
+            case ENTERING -> {
+                if (talkTime >= TALK_FADE + TALK_HOLD) {
+                    talk = Talk.TALKING;
+                    talkTime = 0;
+                }
+                return true;
+            }
+            case TALKING -> {
+                if (dialogue.onLastLine() && (in.pressed(KeyEvent.VK_E) || in.pressed(KeyEvent.VK_ENTER))) {
+                    in.consume(KeyEvent.VK_E, KeyEvent.VK_ENTER);
+                    sound(Snd.MENU_MOVE);
+                    talk = Talk.LEAVING;                              // the last line stays up while the screen goes dark
+                    talkTime = 0;
+                    return true;
+                }
+                dialogue.update(this, in, dt);
+                if (!dialogue.stopsWorld()) {
+                    talk = Talk.LEAVING;
+                    talkTime = 0;
+                }
+                return true;
+            }
+            case LEAVING -> {
+                if (talkTime >= TALK_FADE + TALK_HOLD) {
+                    dialogue.clear();
+                    talk = Talk.RETURNING;
+                    talkTime = 0;
+                }
+                return true;
+            }
+            case RETURNING -> {
+                if (talkTime >= TALK_FADE) talk = Talk.NONE;
+                return false;                                          // you can walk off while it fades back in
+            }
+        }
+        return false;
+    }
+
+    /** How black a conversation has made the screen, 0..1. */
+    double talkBlack() {
+        double t = Util.clamp(talkTime / TALK_FADE, 0, 1);
+        return switch (talk) {
+            case NONE -> 0;
+            case ENTERING, LEAVING -> t;
+            case TALKING, RETURNING -> 1 - t;
+        };
+    }
+
+    /** True from the moment you start talking until the world fades back in: the music holds its breath. */
+    boolean musicHushed() { return talk == Talk.ENTERING || talk == Talk.TALKING || talk == Talk.LEAVING; }
+
+    /**
+     * TAB: held, the corner map grows into a big one (straight away in the world; in a fight after a moment, because a
+     * quick tap there locks onto the next enemy instead, when the key comes back up). It shrinks back on release.
+     */
+    private void updateMapKey(double dt, Input in) {
+        boolean playing = state == State.PLAYING && !titleScene;
+        if (playing && in.down(KeyEvent.VK_TAB)) {
+            tabHeld += dt;
+        } else {
+            if (playing && run != null && tabHeld > 0 && tabHeld < MAP_HOLD) {   // a tap, not a hold
+                cycleLock();
+                if (lockTarget != null) sound(Snd.LOCK_ON);
+            }
+            tabHeld = 0;
+        }
+        boolean open = playing && in.down(KeyEvent.VK_TAB) && (run == null || tabHeld >= MAP_HOLD);
+        mapZoom = Util.clamp(mapZoom + (open ? dt : -dt) / 0.16, 0, 1);
+    }
+
     /** Walking into a new area of the world: its name across the screen, and the minimap learns it. */
     private void noticeArea() {
         Level.Room here = level.roomAt(player.x, player.y, 40);
@@ -410,6 +601,7 @@ final class World {
             bannerTimer = 2.2;
         }
         here.visited = true;
+        if (adventure != null) adventure.visited.add(here.name);
     }
 
     /** The area of the world you're in (for the HUD), or null in a fight. */
@@ -427,7 +619,11 @@ final class World {
         if (npc != null) {
             player.facing = Util.angleTo(player.x, player.y, npc.x(), npc.y());
             dialogue.clearShouts();                                   // a line called out on the way is cut short
-            Story.talk(this, npc);
+            boolean important = Story.talk(this, npc);
+            if (important && state == State.PLAYING && dialogue.stopsWorld()) {   // story or a quest: fade into the talk
+                talkTime = TALK_FADE * talkBlack();                   // from however dark the screen already is
+                talk = Talk.ENTERING;
+            }
             saveGame();
             return true;
         }
@@ -439,9 +635,7 @@ final class World {
         Level.Gate g = gateNearby();
         if (g != null) {
             if (!gateOpen(g.challenge())) {
-                dialogue.say("YOU", "hero.down.idle", Snd.TOWN_TALK, g.challenge() == Challenge.HOLLOW
-                    ? "Thorns as thick as my arm, knotted across the way, and something beating behind them. Someone in the camp must know what this is."
-                    : "Fresh tracks, and a sour smell on the wind. Whoever hunts around here would know what's going on.");
+                dialogue.say("YOU", "hero.down.idle", Snd.TOWN_TALK, Story.gateShut(g.challenge()));
                 return true;
             }
             briefing = g.challenge();
@@ -449,12 +643,66 @@ final class World {
             sound(Snd.MENU_OPEN);
             return true;
         }
+        Level.Road road = roadNearby();
+        if (road != null) {
+            if (!Story.worldOpen(adventure, road.to())) {
+                dialogue.say("YOU", "hero.down.idle", Snd.TOWN_TALK, Story.roadShut(road.to()));
+                return true;
+            }
+            openTravel();
+            return true;
+        }
         return false;
     }
 
-    /** Whether you've been asked to take a challenge on yet (its gate stays thorny until then). */
+    /** Whether you've been asked to take a challenge on yet (its gate stays shut until then). */
     boolean gateOpen(Challenge c) {
-        return adventure != null && (c == Challenge.HOLLOW ? adventure.has("quest.hollow") : adventure.has("quest.dens"));
+        return adventure != null && adventure.has("quest." + c.id);
+    }
+
+    Level.Road roadNearby() {
+        if (run != null || adventure == null) return null;
+        for (Level.Road r : level.roads) if (Util.dist(player.x, player.y, r.x(), r.y()) <= INTERACT_RANGE + 10) return r;
+        return null;
+    }
+
+    // ------------------------------------------------------------------ travelling between worlds
+
+    /** The map of the worlds, with the one you're in picked. */
+    void openTravel() {
+        travelCursor = 0;
+        for (int i = 0; i < Worlds.IDS.length; i++) if (Worlds.IDS[i].equals(adventure.world)) travelCursor = i;
+        state = State.TRAVEL;
+        sound(Snd.MENU_OPEN);
+    }
+
+    /** A / D (or W / S) pick a world, ENTER goes there (if the road is open), ESC stays put. */
+    private void updateTravel(Input in) {
+        if (in.pressed(KeyEvent.VK_ESCAPE)) { state = State.PLAYING; sound(Snd.MENU_BACK); return; }
+        int n = Worlds.IDS.length;
+        if (in.pressed(KeyEvent.VK_D) || in.pressed(KeyEvent.VK_RIGHT) || in.pressed(KeyEvent.VK_S) || in.pressed(KeyEvent.VK_DOWN)) { travelCursor = (travelCursor + 1) % n; sound(Snd.MENU_MOVE); }
+        if (in.pressed(KeyEvent.VK_A) || in.pressed(KeyEvent.VK_LEFT) || in.pressed(KeyEvent.VK_W) || in.pressed(KeyEvent.VK_UP)) { travelCursor = (travelCursor + n - 1) % n; sound(Snd.MENU_MOVE); }
+        if (!(in.pressed(KeyEvent.VK_ENTER) || in.pressed(KeyEvent.VK_E))) return;
+        in.consume(KeyEvent.VK_ENTER, KeyEvent.VK_E);
+        String to = Worlds.IDS[travelCursor];
+        if (to.equals(adventure.world)) { state = State.PLAYING; sound(Snd.MENU_BACK); return; }
+        if (!Story.worldOpen(adventure, to)) { sound(Snd.MENU_DENY); return; }
+        travelTo(to);
+    }
+
+    /** Down the road to another world: you arrive where its road comes in. */
+    void travelTo(String to) {
+        saveGame();
+        Level there = Worlds.of(to);
+        Level.Road in = null;
+        for (Level.Road r : there.roads) if (r.to().equals(adventure.world)) in = r;
+        adventure.world = to;
+        if (in != null) adventure.setSpot(to, in.ax(), in.ay());
+        else adventure.clearSpot(to);
+        enterWorld();
+        sound(Snd.TRAVEL);
+        Story.arrive(this);
+        saveGame();
     }
 
     Level.Npc npcNearby() {
@@ -592,10 +840,7 @@ final class World {
     void startChallenge(Challenge c) {
         Level.Gate gate = null;
         for (Level.Gate g : level.gates) if (g.challenge() == c) gate = g;
-        if (gate != null) {                                            // you'll come back out standing just in front of it
-            adventure.x = gate.x();
-            adventure.y = gate.y() + 110;
-        }
+        if (gate != null) adventure.setSpot(adventure.world, gate.x(), gate.y() + 110);   // you'll come back out standing just in front of it
         adventure.fights++;
         saveGame();
         clearField();
@@ -641,7 +886,7 @@ final class World {
         in.consume(KeyEvent.VK_ENTER);
         switch (row) {
             case "RESUME" -> { state = State.PLAYING; sound(Snd.PAUSE_OUT); }
-            case "EQUIPMENT" -> openArmory(State.PAUSE);
+            case "EQUIPMENT" -> openArmory();
             case "SAVE & QUIT" -> {
                 saveGame();
                 showTitle();
@@ -655,8 +900,8 @@ final class World {
         }
     }
 
-    private void openArmory(State back) {
-        armoryReturn = back;
+    /** The equipment screen, from the pause menu (ESC goes back to it). */
+    private void openArmory() {
         armoryCursor = 0;
         armoryMessage = "";
         confirmSalvage = false;
@@ -668,9 +913,8 @@ final class World {
     private void updateArmory(Input in) {
         List<Item> bag = profile.sorted();
         if (in.pressed(KeyEvent.VK_ESCAPE)) {
-            if (adventure != null) saveGame();
-            else profile.save(Profile.file());
-            state = armoryReturn;
+            saveGame();
+            state = State.PAUSE;
             sound(Snd.MENU_BACK);
             return;
         }
@@ -774,6 +1018,10 @@ final class World {
         for (Level.Npc npc : level.npcs) {                         // people (and their stalls) are solid too
             boolean stall = npc.role() != Level.Role.TALK;
             Util.Vec out = around(npc.x(), npc.y() + (stall ? 20 : 8), stall ? 46 : 16, player.x, player.y, player.radius, player.x - player.lastX, player.y - player.lastY);
+            if (out != null) { player.x = out.x(); player.y = out.y(); }
+        }
+        for (Rectangle2D.Double g : level.water) {                  // nobody walks into the canal
+            Util.Vec out = aroundRect(g, player.x, player.y, player.radius);
             if (out != null) { player.x = out.x(); player.y = out.y(); }
         }
         for (Rectangle2D.Double g : level.grassPatches) {           // solid ground you can't walk on, e.g. a flower bed

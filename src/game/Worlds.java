@@ -10,10 +10,43 @@ import java.util.List;
 
 /**
  * The explorable worlds: places to walk around between fights, with people to talk to, chests to find and the gates
- * to challenges. No monsters live here. So far there is one, the Whispering Forest.
+ * to challenges. No monsters live here. Roads join them (see {@link Level.Road}): the Whispering Forest (chapter 1)
+ * and the city of Lumen (chapter 2) so far.
  */
 final class Worlds {
     private Worlds() {}
+
+    static final String FOREST = "forest", CITY = "city", LAB = "lab";
+    /** Every world, in the order the story reaches them (the lab is still to come). */
+    static final String[] IDS = {FOREST, CITY};
+
+    static boolean exists(String id) {
+        for (String w : IDS) if (w.equals(id)) return true;
+        return false;
+    }
+
+    /** A world by its id (the forest for anything unknown). */
+    static Level of(String id) {
+        return switch (id) {
+            case CITY -> city();
+            default -> forest();
+        };
+    }
+
+    /** How you'd say you were going back there ("the forest"). */
+    static String home(String id) { return CITY.equals(id) ? "the city" : "the forest"; }
+
+    /** Who trains you there (spends your skill points). */
+    static String trainer(String id) { return CITY.equals(id) ? "Sable" : "Ranger Ash"; }
+
+    /** A world's name, as the main menu and the map write it. */
+    static String title(String id) {
+        return switch (id) {
+            case CITY -> "Lumen, the City of Lamps";
+            case LAB -> "The Laboratory";
+            default -> "The Whispering Forest";
+        };
+    }
 
     /** The main menu's backdrop: a forest clearing with trees and rocks around it (always the same). */
     static Level clearing() {
@@ -64,6 +97,7 @@ final class Worlds {
         Rectangle2D.Double c = camp.bounds;
         Level lv = new Level(b.rooms, doors, c.getCenterX(), c.getCenterY() + 130);
         lv.name = "THE WHISPERING FOREST";
+        lv.world = FOREST;
         lv.theme = Theme.FOREST;
         lv.explorable = true;
 
@@ -129,12 +163,123 @@ final class Worlds {
         lv.treasures.add(new Level.Treasure("seed", r.getMaxX() - 170, r.getCenterY(), false));
         lv.landmarks.add(new Level.Landmark("boulder", r.getCenterX(), r.getMaxY() - 110, 22));
         lv.landmarks.add(new Level.Landmark("bush", r.getCenterX() + 220, r.y + 120, 0));
+        lv.roads.add(new Level.Road(CITY, "THE SOUTH ROAD", r.getCenterX() + 300, r.getMaxY() - 70, r.getCenterX() + 300, r.getMaxY() - 170));
 
         lv.breakables.add(new Breakable(Breakable.Kind.CRATE, c.x + 330, c.getCenterY() + 60, 1));
         lv.breakables.add(new Breakable(Breakable.Kind.BARREL, c.getMaxX() - 330, c.getCenterY() + 40, 1));
         lv.breakables.add(new Breakable(Breakable.Kind.CRATE, sp.x + 380, sp.getMaxY() - 120, 1));
         lv.breakables.add(new Breakable(Breakable.Kind.BARREL, t.getMaxX() - 160, t.getMaxY() - 140, 1));
         lv.breakables.add(new Breakable(Breakable.Kind.CRATE, r.x + 420, r.y + 150, 1));
+        return lv;
+    }
+
+    /**
+     * Lumen, the City of Lamps: a night-time city whose lamps have flickered since a star fell into the Dynamo under it.
+     * <pre>
+     *                         [  NORTH GATE  ]                 [ CLOCKTOWER COURT ]
+     *                                |                                  |
+     *   [ CANAL WALK ] -- [  LANTERN SQUARE  ] ------------------- [ MARKET ROW ]
+     *         |                      |
+     *   [ ALLEY MOUTH ]       [ TINKER'S YARD ]      (the gates to the back alleys and the substation)
+     *                                |
+     *                         [ DYNAMO STEPS ]        (the gate to the Dynamo Tower)
+     * </pre>
+     */
+    /** The city's margin round its outermost streets: room for the house fronts along the top ones to be seen. */
+    private static final double EDGE = 300;
+
+    static Level city() {
+        Level.Builder b = new Level.Builder();
+        Level.Room square = b.start("LANTERN SQUARE", 1400, 1000, Level.Room.State.SAFE);
+        Level.Room gate = b.attach(square, NORTH, "NORTH GATE", 900, 640, Level.Room.State.OPEN);
+        Level.Room market = b.attach(square, EAST, "MARKET ROW", 1200, 640, Level.Room.State.OPEN);
+        Level.Room clock = b.attach(market, NORTH, "CLOCKTOWER COURT", 820, 700, Level.Room.State.SAFE);
+        Level.Room canal = b.attach(square, WEST, "CANAL WALK", 1000, 760, Level.Room.State.OPEN);
+        Level.Room alley = b.attach(canal, SOUTH, "ALLEY MOUTH", 800, 640, Level.Room.State.OPEN);
+        Level.Room yard = b.attach(square, SOUTH, "TINKER'S YARD", 1100, 760, Level.Room.State.OPEN);
+        Level.Room steps = b.attach(yard, SOUTH, "DYNAMO STEPS", 1000, 700, Level.Room.State.SAFE);
+        List<Level.Door> doors = b.finish(EDGE);
+
+        Rectangle2D.Double q = square.bounds;
+        Level lv = new Level(b.rooms, doors, q.getCenterX(), q.getCenterY() + 200, EDGE);
+        lv.name = "LUMEN, THE CITY OF LAMPS";
+        lv.world = CITY;
+        lv.theme = Theme.CITY;
+        lv.explorable = true;
+
+        // Lantern Square: the captain by the fountain, the duelist and the peddler at their stalls
+        lv.landmarks.add(new Level.Landmark("fountain", q.getCenterX(), q.getCenterY() + 40, 74));
+        lv.npcs.add(new Level.Npc("vell", "CAPTAIN VELL", "city.vell.idle", Level.Role.TALK, q.getCenterX() - 230, q.getCenterY() - 70));
+        lv.npcs.add(new Level.Npc("sable", "SABLE", "shop.duelist", Level.Role.TRAINER, q.x + 250, q.y + 210));
+        lv.npcs.add(new Level.Npc("nix", "NIX", "shop.peddler", Level.Role.MERCHANT, q.getMaxX() - 250, q.y + 210));
+        for (double[] p : new double[][]{{0.12, 0.62}, {0.88, 0.62}, {0.32, 0.9}, {0.68, 0.9}}) {
+            lv.landmarks.add(new Level.Landmark("lamp", q.x + q.width * p[0], q.y + q.height * p[1], 12));
+        }
+        lv.landmarks.add(new Level.Landmark("bench", q.x + 150, q.getMaxY() - 110, 0));
+        lv.landmarks.add(new Level.Landmark("bench", q.getMaxX() - 150, q.getMaxY() - 110, 0));
+
+        // the north gate: the road back to the forest, and a purse someone dropped on the way in
+        Rectangle2D.Double g = gate.bounds;
+        lv.roads.add(new Level.Road(FOREST, "THE NORTH ROAD", g.getCenterX(), g.y + 70, g.getCenterX(), g.y + 190));
+        lv.treasures.add(new Level.Treasure("city.gate", g.x + 140, g.getMaxY() - 140, false));
+        lv.landmarks.add(new Level.Landmark("lamp", g.getCenterX() - 170, g.y + 120, 12));
+        lv.landmarks.add(new Level.Landmark("lamp", g.getCenterX() + 170, g.y + 120, 12));
+        lv.landmarks.add(new Level.Landmark("planter", g.getMaxX() - 120, g.getCenterY() + 60, 30));
+
+        // Market Row: the newsboy, the stalls, and a chest behind them
+        Rectangle2D.Double m = market.bounds;
+        lv.npcs.add(new Level.Npc("pip", "PIP", "city.pip.idle", Level.Role.TALK, m.getCenterX() - 120, m.getCenterY() + 40));
+        for (int i = 0; i < 3; i++) lv.landmarks.add(new Level.Landmark("stall" + i, m.x + 230 + i * 330, m.y + 150, 44));
+        lv.treasures.add(new Level.Treasure("city.market", m.getMaxX() - 120, m.getMaxY() - 120, false));
+        lv.landmarks.add(new Level.Landmark("lamp", m.x + 120, m.getMaxY() - 90, 12));
+        lv.landmarks.add(new Level.Landmark("cart", m.getCenterX() + 260, m.getMaxY() - 150, 36));
+
+        // Clocktower Court: quiet, and the grandest chest in the city, with a spark of starlight beside it
+        Rectangle2D.Double k = clock.bounds;
+        lv.landmarks.add(new Level.Landmark("clock", k.getCenterX(), k.y + 230, 44));
+        lv.treasures.add(new Level.Treasure("city.clock", k.x + 150, k.getMaxY() - 160, true));
+        lv.treasures.add(new Level.Treasure("city.spark", k.getMaxX() - 150, k.getMaxY() - 160, false));
+        lv.landmarks.add(new Level.Landmark("planter", k.x + 120, k.y + 130, 30));
+        lv.landmarks.add(new Level.Landmark("planter", k.getMaxX() - 120, k.y + 130, 30));
+
+        // Canal Walk: the rat-catcher by the water
+        Rectangle2D.Double c = canal.bounds;
+        lv.water.add(new Rectangle2D.Double(c.x, c.y, c.width, 190));
+        lv.npcs.add(new Level.Npc("gus", "OLD GUS", "city.gus.idle", Level.Role.TALK, c.getCenterX() + 120, c.getCenterY() + 70));
+        lv.landmarks.add(new Level.Landmark("lamp", c.x + 180, c.y + 250, 12));
+        lv.landmarks.add(new Level.Landmark("lamp", c.getMaxX() - 260, c.y + 250, 12));
+        lv.landmarks.add(new Level.Landmark("crates", c.x + 140, c.getMaxY() - 120, 34));
+
+        // the alley mouth: the way into the back alleys, and a chest in the rubbish
+        Rectangle2D.Double a = alley.bounds;
+        lv.gates.add(new Level.Gate(Challenge.ALLEYS, a.getCenterX(), a.getCenterY() + 20));
+        lv.treasures.add(new Level.Treasure("city.alley", a.x + 120, a.getMaxY() - 110, false));
+        lv.landmarks.add(new Level.Landmark("crates", a.getMaxX() - 130, a.y + 150, 34));
+        lv.landmarks.add(new Level.Landmark("hydrant", a.x + 130, a.y + 140, 12));
+
+        // the tinker's yard: Juno's workshop, scrap, and the way into the substation
+        Rectangle2D.Double y = yard.bounds;
+        lv.npcs.add(new Level.Npc("juno", "TINKER JUNO", "city.juno.idle", Level.Role.TALK, y.x + 300, y.getCenterY() - 60));
+        lv.gates.add(new Level.Gate(Challenge.SUBSTATION, y.getMaxX() - 260, y.getCenterY() + 20));
+        lv.landmarks.add(new Level.Landmark("scrap", y.x + 140, y.getMaxY() - 130, 34));
+        lv.landmarks.add(new Level.Landmark("pylon", y.getMaxX() - 120, y.y + 140, 30));
+        lv.landmarks.add(new Level.Landmark("crates", y.getCenterX(), y.getMaxY() - 110, 34));
+        lv.treasures.add(new Level.Treasure("city.yard", y.x + 120, y.y + 120, false));
+        lv.landmarks.add(new Level.Landmark("lamp", y.getCenterX() - 60, y.y + 110, 12));
+        lv.landmarks.add(new Level.Landmark("lamp", y.getCenterX() + 80, y.getMaxY() - 220, 12));
+
+        // the Dynamo Steps: the tower's door at the top of them
+        Rectangle2D.Double d = steps.bounds;
+        lv.gates.add(new Level.Gate(Challenge.TOWER, d.getCenterX(), d.getCenterY() - 40));
+        for (double[] p : new double[][]{{0.15, 0.3}, {0.85, 0.3}, {0.15, 0.78}, {0.85, 0.78}}) {
+            lv.landmarks.add(new Level.Landmark("lamp", d.x + d.width * p[0], d.y + d.height * p[1], 12));
+        }
+
+        lv.breakables.add(new Breakable(Breakable.Kind.CRATE, m.x + 140, m.getMaxY() - 160, 1));
+        lv.breakables.add(new Breakable(Breakable.Kind.BARREL, m.x + 200, m.getMaxY() - 110, 1));
+        lv.breakables.add(new Breakable(Breakable.Kind.CRATE, c.x + 260, c.getMaxY() - 90, 1));
+        lv.breakables.add(new Breakable(Breakable.Kind.BARREL, a.getMaxX() - 220, a.getMaxY() - 120, 1));
+        lv.breakables.add(new Breakable(Breakable.Kind.CRATE, y.getCenterX() + 170, y.getMaxY() - 140, 1));
         return lv;
     }
 }

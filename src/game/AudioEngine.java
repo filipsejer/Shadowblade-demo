@@ -127,6 +127,11 @@ final class AudioEngine {
         }, false);
     }
 
+    /** Fades the music out without losing its place (true), or back in from where it stopped (false). */
+    void setMusicHushed(boolean hushed) {
+        enqueue(() -> music.setHushed(hushed), false);
+    }
+
     /** Sets the background bed: 0 none, 1 forest wind and birds, 2 city hum and traffic; {@code level} 0..1. */
     void setAmbience(int bed, double level) {
         enqueue(() -> ambience.set(bed, level), false);

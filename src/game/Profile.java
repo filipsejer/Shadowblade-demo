@@ -32,7 +32,8 @@ final class Profile {
         return h != null ? Path.of(h) : Path.of(System.getProperty("user.home"), ".spellblade");
     }
 
-    static Path file() { return home().resolve("profile.properties"); }
+    /** The save slot in use's gold and gear (see {@link Saves}). */
+    static Path file() { return Saves.dir().resolve("profile.properties"); }
 
     boolean isEquipped(Item it) { return equipped.get(it.slot) == it; }
 

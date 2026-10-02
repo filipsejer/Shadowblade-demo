@@ -83,7 +83,7 @@ final class Battlefield {
         Level lv = new Level(List.of(field), List.of(), start.getCenterX(), start.getCenterY());
         lv.theme = c.theme;
         lv.name = c.title;
-        lv.bossName = "THE BLIGHTED GUARDIAN";
+        lv.bossName = c.boss ? c.bossName : "GUARDIAN";
 
         // the nests: furthest from the start, then furthest from each other (walking distance, in cells)
         List<int[]> chosen = new ArrayList<>();
@@ -107,9 +107,10 @@ final class Battlefield {
             lv.nestSpots.add(new Util.Vec(p.getCenterX() + (rng.nextDouble() - 0.5) * 80, p.getCenterY() + (rng.nextDouble() - 0.5) * 80));
         }
 
-        // scenery to weave between, crates, and a few caches
-        String[] kinds = {"oak", "oak", "boulder", "stump", "bush", "bush"};
-        double[] radii = {28, 28, 22, 18, 0, 0};
+        // scenery to weave between (trees and rocks; in the city, lamps, planters, carts and crates), crates, and a few caches
+        boolean city = c.theme == Theme.CITY;
+        String[] kinds = city ? new String[]{"lamp", "planter", "crates", "cart", "hydrant", "bench", "scrap"} : new String[]{"oak", "oak", "boulder", "stump", "bush", "bush"};
+        double[] radii = city ? new double[]{12, 30, 34, 36, 12, 0, 34} : new double[]{28, 28, 22, 18, 0, 0};
         List<int[]> open = new ArrayList<>();
         for (int[] cl : cells) {
             Rectangle2D.Double p = rect[cl[0]][cl[1]];

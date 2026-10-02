@@ -74,6 +74,23 @@ final class WorldRenderer {
             if (!view.intersects(gate.x() - 140, gate.y() - 200, 280, 280)) continue;
             items.add(new Item(gate.y(), () -> drawGate(g, w, gate)));
         }
+        for (Level.Road road : level.roads) {
+            if (!view.intersects(road.x() - 160, road.y() - 220, 320, 300)) continue;
+            drawRoadGlow(g, w, road);
+            shadow(g, road.x(), road.y() - 2, 22, 6);
+            items.add(new Item(road.y(), () -> drawRoad(g, w, road)));
+        }
+        if (run != null) {
+            for (Relay r : run.relays) {
+                if (!view.intersects(r.x - 260, r.y - 260, 520, 520)) continue;
+                drawRelayRing(g, w, r);
+                shadow(g, r.x, r.y - 2, 40, 10);
+                items.add(new Item(r.y, () -> drawRelay(g, w, r)));
+            }
+        }
+        for (LevelView.Standing st : levelView.standing(level, view)) {     // the trees and rocks around the walls
+            items.add(new Item(st.y(), () -> st.sprite().draw(g, st.x(), st.y(), Art.SCALE, st.flip())));
+        }
         for (Level.Landmark l : level.landmarks) {
             if (!view.intersects(l.x() - 140, l.y() - 240, 280, 300)) continue;
             Sprite sprite = landmark(l.kind());
@@ -104,6 +121,12 @@ final class WorldRenderer {
             g.setColor(new Color(art.ambient, true));
             g.fill(view);
             levelView.drawGlows(g, view);
+            for (Level.Landmark l : level.landmarks) {                       // street lamps light the ground round them
+                if (l.kind().equals("lamp") && view.intersects(l.x() - 220, l.y() - 320, 440, 440)) levelView.drawGlow(g, l.x(), l.y(), 0x01FFE7A0);
+            }
+            if (run != null) for (Relay r : run.relays) {
+                if (r.done && view.intersects(r.x - 220, r.y - 320, 440, 440)) levelView.drawGlow(g, r.x, r.y + 30, 0x01FFE7A0);
+            }
         }
 
         for (Projectile pr : w.projectiles) drawProjectile(g, w, pr);
@@ -194,8 +217,8 @@ final class WorldRenderer {
         else if (p.moving) s = Art.frame("hero." + dir + ".walk", w.time, 9);
         else s = Art.frame("hero." + dir + ".idle", w.time, 2);
         float alpha = p.hurtTimer > 0 && ((int) (p.hurtTimer * 20) % 2 == 0) ? 0.45f : 1f;
-        s.draw(g, p.x, p.y + 14, Art.SCALE, flip, 0, alpha);
-        if (p.hurtTimer > 0.5) s.drawSilhouette(g, p.x, p.y + 14, Art.SCALE, flip, 0xFFFFFF, 0.65f);   // white flash when hit
+        SwordArt.Kind sword = SwordArt.forItem(w.profile == null ? null : w.profile.equipped.get(game.Item.Slot.WEAPON));   // the sword he wears
+        PeopleArt.drawWithSword(g, s, p.x, p.y + 14, flip, alpha, sword, p.hurtTimer > 0.5 ? 0.65f : 0);   // (white flash when hit)
     }
 
     // ------------------------------------------------------------------ the explorable world
@@ -246,20 +269,78 @@ final class WorldRenderer {
         g.setStroke(new BasicStroke(3f));
         g.draw(new Ellipse2D.Double(x - r, y - r * 0.38, r * 2, r * 0.76));
         Art.frame("run.portal", w.time, open ? 10 : 2).draw(g, x, y, Art.SCALE, false, 0, open ? 1f : 0.35f);
-        if (!open) {                                                                      // thorns across it
+        boolean city = c.theme == Theme.CITY;
+        if (!open && !city) {                                                             // thorns across it
             g.setStroke(new BasicStroke(5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
             for (int i = 0; i < 5; i++) {
                 double a = -0.9 + i * 0.45;
                 g.setColor(new Color(60, 40, 34, 230));
                 g.draw(new Line2D.Double(x - 46, y - 70 + i * 14, x + 46, y - 50 - i * 12 + Math.sin(a) * 10));
             }
+        } else if (!open) {                                                               // the city's: iron bars and a padlock
+            g.setStroke(new BasicStroke(5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER));
+            g.setColor(new Color(40, 42, 54, 235));
+            for (int i = -2; i <= 2; i++) g.draw(new Line2D.Double(x + i * 18, y - 104, x + i * 18, y - 6));
+            g.draw(new Line2D.Double(x - 46, y - 80, x + 46, y - 80));
+            g.draw(new Line2D.Double(x - 46, y - 30, x + 46, y - 30));
+            g.setColor(new Color(200, 160, 70));
+            g.fill(new RoundRectangle2D.Double(x - 9, y - 62, 18, 16, 4, 4));
+            g.setStroke(new BasicStroke(3f));
+            g.draw(new Arc2D.Double(x - 6, y - 72, 12, 16, 0, 180, Arc2D.OPEN));
         }
         g.setFont(f14b);
         centered(g, c.title, x, y - 122, open ? new Color(225, 195, 255) : new Color(190, 170, 160));
         g.setFont(f12);
         int clears = w.adventure == null ? 0 : w.adventure.clears(c);
-        String sub = !open ? "Sealed by thorns" : clears == 0 ? "From " + c.giver : "Cleared " + clears + (clears == 1 ? " time" : " times") + MenuStyle.DOT + "it's stronger now";
+        String sub = !open ? (city ? "Locked" : "Sealed by thorns") : clears == 0 ? "From " + c.giver : "Cleared " + clears + (clears == 1 ? " time" : " times") + MenuStyle.DOT + "it's stronger now";
         centered(g, sub, x, y - 104, new Color(215, 210, 225));
+    }
+
+    /** The light on the ground where a road leaves the world: brighter once the road is open. */
+    private void drawRoadGlow(Graphics2D g, World w, Level.Road road) {
+        boolean open = w.adventure != null && Story.worldOpen(w.adventure, road.to());
+        double r = 70 + 5 * Math.sin(w.time * 2), x = road.x(), y = road.y();
+        Color c = open ? new Color(255, 214, 120) : new Color(150, 140, 130);
+        g.setColor(Util.alpha(c, open ? 0.16 : 0.08));
+        g.fill(new Ellipse2D.Double(x - r, y - r * 0.36, r * 2, r * 0.72));
+        g.setColor(Util.alpha(c, open ? 0.55 : 0.25));
+        g.setStroke(new BasicStroke(2.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f, new float[]{10, 8}, (float) (w.time * 12)));
+        g.draw(new Ellipse2D.Double(x - r, y - r * 0.36, r * 2, r * 0.72));
+    }
+
+    /** A road out of the world: a signpost with the road's name, and where it goes. */
+    private void drawRoad(Graphics2D g, World w, Level.Road road) {
+        Art.frames("landmark.signpost")[0].draw(g, road.x(), road.y(), Art.SCALE, false);
+        boolean open = w.adventure != null && Story.worldOpen(w.adventure, road.to());
+        g.setFont(f14b);
+        centered(g, road.name(), road.x(), road.y() - 124, open ? new Color(255, 226, 160) : new Color(190, 170, 160));
+        g.setFont(f12);
+        centered(g, open ? "To " + Worlds.title(road.to()) : "Not yet", road.x(), road.y() - 106, new Color(215, 210, 225));
+    }
+
+    /** A relay's circle on the ground: dashed while it waits, filling round as it powers up, solid once it's on. */
+    private void drawRelayRing(Graphics2D g, World w, Relay r) {
+        double rx = Relay.RADIUS, ry = Relay.RADIUS * Relay.FLAT;
+        Ellipse2D ring = new Ellipse2D.Double(r.x - rx, r.y - ry, rx * 2, ry * 2);
+        Color c = r.done ? new Color(255, 222, 120) : r.started ? new Color(255, 200, 90) : new Color(170, 160, 200);
+        g.setColor(Util.alpha(c, r.done ? 0.12 : r.held ? 0.2 + 0.06 * Math.sin(w.time * 8) : 0.08));
+        g.fill(ring);
+        g.setStroke(r.started ? new BasicStroke(3f) : new BasicStroke(3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f, new float[]{14, 10}, (float) (w.time * 10)));
+        g.setColor(Util.alpha(c, r.started ? 0.45 : 0.6));
+        g.draw(ring);
+        if (r.charging()) {                                                   // how far it has powered up, round the circle
+            g.setStroke(new BasicStroke(7f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g.setColor(new Color(255, 236, 160, r.held ? 235 : 140));
+            g.draw(new Arc2D.Double(r.x - rx, r.y - ry, rx * 2, ry * 2, 90, -360 * r.charge, Arc2D.OPEN));
+        }
+    }
+
+    private void drawRelay(Graphics2D g, World w, Relay r) {
+        boolean lit = r.done || r.charging() && (r.held || (int) (w.time * 6) % 2 == 0);
+        Art.frame(lit ? "relay.on" : "relay.off", w.time, r.charging() ? 12 : 3).draw(g, r.x, r.y, Art.SCALE, false);
+        if (r.started) return;
+        g.setFont(f14b);
+        centered(g, "RELAY", r.x, r.y - 140, new Color(255, 226, 160));
     }
 
     /** A key cap and a word over whatever E would use right now: "E  Talk", "E  Open", "E  Enter". */
@@ -273,8 +354,8 @@ final class WorldRenderer {
         if (npc != null) {
             x = npc.x();
             y = npc.y() + (npc.role() == Level.Role.TALK ? 52 : 74);
-            what = npc.role() == Level.Role.TRAINER && w.adventure.has("met.ash") ? "Train"
-                : npc.role() == Level.Role.MERCHANT && w.adventure.has("met.bramble") ? "Shop" : "Talk";
+            boolean met = w.adventure.has("met." + npc.id());
+            what = npc.role() == Level.Role.TRAINER && met ? "Train" : npc.role() == Level.Role.MERCHANT && met ? "Shop" : "Talk";
         } else if (t != null) {
             x = t.x();
             y = t.y() + 34;
@@ -283,14 +364,24 @@ final class WorldRenderer {
             x = gate.x();
             y = gate.y() + 46;
             what = w.gateOpen(gate.challenge()) ? "Enter" : "Look";
+        } else if (w.roadNearby() != null) {
+            Level.Road road = w.roadNearby();
+            x = road.x();
+            y = road.y() + 40;
+            what = Story.worldOpen(w.adventure, road.to()) ? "Travel" : "Look";
         } else {
             return;
         }
         keyPrompt(g, x, y, what);
     }
 
-    /** A cache in a fight you're standing at: what it costs, and E to open it. */
+    /** A cache in a fight you're standing at: what it costs, and E to open it (or a relay, to switch on). */
     private void drawCachePrompt(Graphics2D g, World w, Run run) {
+        Relay relay = run.relayNearby(w);
+        if (relay != null && w.state == World.State.PLAYING) {
+            keyPrompt(g, relay.x, relay.y + 40, run.chargingRelay() == null ? "Switch on" : "Finish the other relay first");
+            return;
+        }
         Pickup cache = run.cacheNearby(w);
         if (cache == null || w.state != World.State.PLAYING) return;
         keyPrompt(g, cache.x, cache.y + 34, run.gold >= cache.value ? "Open  (" + cache.value + " gold)" : "Needs " + cache.value + " gold");

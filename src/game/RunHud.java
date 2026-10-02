@@ -77,7 +77,7 @@ final class RunHud {
         // the objective and the danger clock (top centre)
         Enemy boss = w.boss();
         g.setFont(f30b);
-        String goal = run.bossDead ? "CLEARED" : boss != null ? "GUARDIAN" : run.bossWarning > 0 ? "..." : "NESTS  " + (run.nestsTotal - run.nestsLeft) + " / " + run.nestsTotal;
+        String goal = run.bossDead ? "CLEARED" : boss != null ? "GUARDIAN" : run.bossWarning > 0 ? "..." : run.challenge.goalWord() + "  " + (run.nestsTotal - run.nestsLeft) + " / " + run.nestsTotal;
         centered(g, goal, width / 2.0, 52, run.bossDead ? new Color(150, 240, 150) : boss != null ? new Color(255, 110, 110) : Color.WHITE);
         g.setFont(f12b);
         String danger = run.dangerLabel();
@@ -96,13 +96,28 @@ final class RunHud {
             centered(g, w.level.bossName + (lab ? "   -   STAGE " + (boss.phase2 ? 2 : 1) : ""), width / 2.0, 99, Color.WHITE);
         }
 
-        minimap.draw(g, w, width);
+        Relay relay = run.chargingRelay();
+        if (relay != null && boss == null) {                          // a relay powering up: how far, and whether you're holding it
+            double bw = Math.min(460, width - 560), bx = (width - bw) / 2;
+            bar(g, bx, 86, bw, 14, relay.charge, Run.RELAY_LIGHT);
+            g.setFont(f12b);
+            String label = "RELAY POWERING UP   " + (int) (relay.charge * 100) + "%";
+            centered(g, label, width / 2.0 + 1, 99, new Color(0, 0, 0, 200));
+            centered(g, label, width / 2.0, 98, Color.WHITE);
+            if (!relay.held) {
+                g.setFont(f22b);
+                double k = 0.5 + 0.5 * Math.sin(w.time * 9);
+                centered(g, "GET BACK IN THE CIRCLE!", width / 2.0, 130, Util.alpha(new Color(255, 120, 90), 0.6 + 0.4 * k));
+            }
+        }
+
+        if (w.mapZoom <= 0) minimap.draw(g, w, width, height);   // (held open, the Renderer draws it over everything else)
         drawSkillSlots(g, p, height);
         drawArrows(g, w, run, width, height);
 
         g.setFont(f12);
         g.setColor(new Color(200, 200, 212, 170));
-        String hint = "ENTER  attack (hold)" + (p.rollUnlocked ? "    SPACE  roll" : "") + "    TAB  lock on    ESC  pause";
+        String hint = "ENTER  attack (hold)" + (p.rollUnlocked ? "    SPACE  roll" : "") + "    TAB  lock on (hold: map)    ESC  pause";
         FontMetrics fm = g.getFontMetrics();
         g.drawString(hint, width - fm.stringWidth(hint) - 16, height - 14);
 
@@ -183,6 +198,7 @@ final class RunHud {
             arrow(g, pk.x - left, pk.y - top, c, width, height);
         }
         for (Enemy e : w.enemies) if (e.rooted() && e.hp > 0) arrow(g, e.x - left, e.y - top, new Color(230, 110, 255), width, height);
+        for (Relay r : run.relays) if (!r.done) arrow(g, r.x - left, r.y - top, Run.RELAY_LIGHT, width, height);
     }
 
     /** An arrow at the screen's edge pointing at something off-screen, at (sx, sy) in screen terms. */
@@ -359,7 +375,7 @@ final class RunHud {
         java.awt.geom.Rectangle2D hb = MenuStyle.heading(g, "PAUSED", x0, base, 76 * s, s).getBounds2D();
         MenuStyle.ruled(g, run.challenge.title, hb.getCenterX(), base + 36 * s, hb.getX(), Math.max(hb.getMaxX(), hb.getX() + 10), 17 * s, s);
         g.setFont(MenuStyle.serif(Font.ITALIC, 16 * s, 0));
-        String status = "Level " + p.level + DOT + "nests " + (run.nestsTotal - run.nestsLeft) + " / " + run.nestsTotal + DOT + run.gold + " gold" + DOT
+        String status = "Level " + p.level + DOT + run.challenge.goalWord().toLowerCase() + " " + (run.nestsTotal - run.nestsLeft) + " / " + run.nestsTotal + DOT + run.gold + " gold" + DOT
             + run.loot.size() + " item" + (run.loot.size() == 1 ? "" : "s") + " found";
         MenuStyle.shadowed(g, status, x0, base + 66 * s, new Color(214, 206, 228, 220));
 
@@ -380,7 +396,7 @@ final class RunHud {
             "The music's volume. LEFT and RIGHT change it; M mutes everything.",
             "The volume of the sound effects. LEFT and RIGHT change it.",
             warn ? "Press ENTER again to leave. You keep the gold and items you've found, but the challenge isn't cleared."
-                : "Leave the fight and go back to the forest. You keep the gold and items you've found.",
+                : "Leave the fight and go back to " + Worlds.home(run.challenge.world) + ". You keep the gold and items you've found.",
         };
         MenuStyle.infoLine(g, info[sel], x0, y0 + rows.length * rowH + 12 * s, 380 * s, s, warn);
         MenuStyle.keys(g, x0, height - 30 * s, s, new String[][]{{"W", "S"}, {"A", "D"}, {"ENTER"}, {"ESC"}}, new String[]{"Navigate", "Volume", "Select", "Resume"});
@@ -462,12 +478,13 @@ final class RunHud {
         MenuStyle.ruled(g, won ? run.challenge.title + (run.firstClear ? DOT + "CLEARED" : DOT + "CLEARED AGAIN") : run.challenge.title,
             cx, base + 38 * s, hb.getX() - 80 * s, hb.getMaxX() + 80 * s, 16 * s, s);
         g.setFont(MenuStyle.serif(Font.ITALIC, 17 * s, 0));
-        MenuStyle.centred(g, won ? "The Blight withers. The light takes you back to the forest, with everything you found."
-                : "You make it back to the forest. Everything you found is yours to keep.", cx, base + 68 * s, new Color(214, 206, 228, 225));
+        String home = Worlds.home(run.challenge.world);
+        MenuStyle.centred(g, won ? "The Blight withers. The light takes you back to " + home + ", with everything you found."
+                : "You make it back to " + home + ". Everything you found is yours to keep.", cx, base + 68 * s, new Color(214, 206, 228, 225));
 
         String[][] tiles = {
             {Run.clock(run.time), "TIME"}, {String.valueOf(p.level), "LEVEL"}, {String.valueOf(w.kills), "KILLS"},
-            {(run.nestsTotal - run.nestsLeft) + " / " + run.nestsTotal, "NESTS"}, {String.valueOf(run.elitesKilled), "ELITES"}, {run.dangerLabel(), "DANGER"},
+            {(run.nestsTotal - run.nestsLeft) + " / " + run.nestsTotal, run.challenge.goalWord()}, {String.valueOf(run.elitesKilled), "ELITES"}, {run.dangerLabel(), "DANGER"},
         };
         double tw = 118 * s, ty = base + 104 * s, tx0 = cx - tiles.length * tw / 2;
         for (int i = 0; i < tiles.length; i++) {
@@ -492,7 +509,7 @@ final class RunHud {
         MenuStyle.shadowed(g, goldText, cx - gw / 2 + 30 * s, gy, GOLD);
         if (won) {
             g.setFont(MenuStyle.sans(Font.PLAIN, 13 * s));
-            MenuStyle.centred(g, run.gold + " picked up" + DOT + run.rewardGold + " reward" + (run.rewardSkillPoints > 0 ? DOT + "spend skill points with Ranger Ash" : ""),
+            MenuStyle.centred(g, run.gold + " picked up" + DOT + run.rewardGold + " reward" + (run.rewardSkillPoints > 0 ? DOT + "spend skill points with " + Worlds.trainer(run.challenge.world) : ""),
                 cx, gy + 22 * s, MenuStyle.DIM);
         }
 
@@ -514,7 +531,7 @@ final class RunHud {
             }
         }
         String[][] groups = {{"ENTER"}};
-        String[] labels = {"Back to the forest"};
+        String[] labels = {"Back to " + Worlds.home(run.challenge.world)};
         java.awt.Composite saved = g.getComposite();
         if (w.overTimer > 0) g.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 0.35f));   // not yet
         MenuStyle.keys(g, cx - MenuStyle.keysWidth(g, s, groups, labels) / 2, height - 30 * s, s, groups, labels);

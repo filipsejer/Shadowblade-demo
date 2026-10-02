@@ -10,9 +10,10 @@ A top-down action adventure in plain Java (Swing / Java2D), with no dependencies
   the monsters tougher the longer you take, caches to buy with the gold you pick up, and loops that make a cleared
   challenge harder (and better paid) every time you go back.
 
-Chapter 1 is **The Whispering Forest**. The monsters, bosses, the forest's trees and rocks, the nests, the crates and
-the chests are drawn pixel art made with [PixelLab](https://pixellab.ai) (the PNGs in `res/art`); everything else is
-pixel art painted by code at startup (see **Graphics engine**). All the music and sound effects are synthesised by code
+Chapter 1 is **The Whispering Forest**; chapter 2 is **Lumen, the City of Lamps**, down the road south. The monsters,
+bosses, the forest's trees and rocks, the nests, the crates and the chests are drawn pixel art made with
+[PixelLab](https://pixellab.ai) (the PNGs in `res/art`); everything else is pixel art painted by code at startup (see
+**Graphics engine**), the forest's and the city's ground and scenery painted to match the drawn art. All the music and sound effects are synthesised by code
 (there are no audio files; see **Sound engine**).
 
 ## Just want to play it?
@@ -52,7 +53,8 @@ rm -rf out_dist && mkdir out_dist && javac --release 17 -d out_dist src/game/*.j
 | Enter (or J) | Swing your sword (break crates for a few coins); confirm on screens | Attack. **Hold it** to keep swinging; you dash through the nearest enemy |
 | Space | Roll | Roll, once you've picked **Evasive Roll** (or learned **Tumbler**) |
 | 1 / 2 / 3, R | | On a level-up or chest: take that card (4 with the Ring of Fortune); R rerolls |
-| Tab / Q | | Lock on (cycle) / release |
+| Tab (hold) | The big map: the corner radar grows to show everywhere you've explored, with the areas' names | The big map of the battlefield (after a moment, since a tap locks on) |
+| Tab (tap) / Q | | Lock on (cycle) / release |
 | Esc | Pause: resume, **Equipment**, volumes, **Save & Quit** | Pause: resume, volumes, **Retreat** |
 | M | Mute / unmute | Mute / unmute |
 
@@ -60,8 +62,9 @@ On the trainer's, the merchant's and the Armory's screens: **W / S** choose, **E
 
 ## The adventure
 
-**New Game** starts the story; **Continue** picks it up where you saved (the main menu also has the **Armory** and
-**Quit**). You arrive at **Mossbrook**, a camp of forest folk, and walk around freely: no monsters live in the world
+**New Game** starts the story in one of five save slots; **Continue** picks up the game you played last, where you
+saved it; **Load Game** picks up any of them; **Quit** closes the game. Your gear is managed from **Equipment** in the
+pause menu. You arrive at **Mossbrook**, a camp of forest folk, and walk around freely: no monsters live in the world
 itself (`Worlds.forest`).
 
 ```
@@ -77,7 +80,9 @@ itself (`Worlds.forest`).
 - **People** (`Story.talk`): **Elder Rowan** (the story and the main quest), **Ranger Ash** (the trainer),
   **Bramble** (the merchant), **Wren** (a child with hints), **the Hermit** at the Old Shrine (lore) and **Hunter Fenn**
   (a side job). Walk up and press **E**. What they say changes as the story moves on; a gold **!** over someone means
-  they have something new for you (or, over Ash, that you can afford an upgrade).
+  they have something new for you (or, over Ash, that you can afford an upgrade). Important conversations (the story moving on, or
+  a quest being given) fade the screen to black and hush the music; when they're done it fades back, and the music
+  carries on where it stopped. Small talk, greetings and reminders just put the box up.
 - **Chests** are hidden around the forest: gold, items, and a glowing seed worth a skill point (`Story.treasure`).
   Crates and barrels break for a few coins.
 - **Ranger Ash** turns skill points into **masteries** (`Mastery`): permanent upgrades that apply in every fight.
@@ -87,15 +92,49 @@ itself (`Worlds.forest`).
 - **Bramble** sells four items for gold, priced by rarity (`Adventure.price`); the stock changes every time you clear
   a challenge.
 - The top of the screen names the area you're in and what to do next (`Story.objective`); the radar in the corner
-  shows the places you've been, the people (blue; the trainer and merchant in gold), unopened chests (orange) and the
-  gates (purple).
+  shows the places you've been, the people (blue; the trainer and merchant in gold), unopened chests (orange), the
+  gates (purple) and the roads out (gold diamonds).
+- **Roads** join the worlds (`Level.Road`). Walk up to a road's signpost and press **E** for the map of the worlds:
+  each one a lit globe on a night sky, joined by a dotted road, with the ones still to come shown as "???". Pick one
+  with **A** / **D** and **ENTER** to travel; you arrive where its road comes in. The south road from the Riverbank
+  opens once chapter 1 is done, and the city's north road leads back, so you can go home to repeat challenges or
+  train with Ash. Each world remembers where you last stood.
+
+### Lumen, the City of Lamps (chapter 2)
+
+A night-time city (`Worlds.city`), its lamps flickering:
+
+```
+                         [  NORTH GATE  ]                 [ CLOCKTOWER COURT ]
+                                |                                  |
+   [ CANAL WALK ] -- [  LANTERN SQUARE  ] ------------------- [ MARKET ROW ]
+         |                      |
+   [ ALLEY MOUTH ]       [ TINKER'S YARD ]      (the gates to the back alleys and the substation)
+                                |
+                         [ DYNAMO STEPS ]        (the gate to the Dynamo Tower)
+```
+
+- **People:** **Captain Vell** of the Watch (the story), **Tinker Juno** (the substation, and what she finds in the
+  Warden), **Sable** the fencing master (the city's trainer: the same masteries as Ash), **Nix** the peddler (the
+  city's merchant: the same table as Bramble's), **Pip** the newsboy (hints) and **Old Gus** the rat-catcher (a side job).
+- **Chests:** six, including a spark of starlight worth a skill point in Clocktower Court.
 
 ### The story so far (Chapter 1)
 
 The stars fell, and three nights later a sickness crept out of the Hollow north of Mossbrook: the **Blight**. Thorns
 that walk, flowers that bite, growing from nests. Elder Rowan asks you to go into the Hollow and tear the nests out.
 Clear it and the camp thanks you with a gift (an epic ring, gold and skill points) and a warning: the Blight didn't
-start in the forest. The road south leads to the city, and that's where the story continues next.
+start in the forest. The road south leads to the city.
+
+### Chapter 2
+
+One of the stars came down through the roof of the **Dynamo**, the engine every lamp in Lumen burns on. Since then the
+lamps flicker, the city's drones shoot at people, the bins bite, and the **Warden**, the iron guard built to watch the
+Dynamo, has sealed its tower. Captain Vell sends you to Tinker Juno, who needs the substation's power back before the
+tower's door will open. Bring the Warden down and the Watch gives you the **Lumen Saber** (an epic curved saber, the
+first gift you'll see in the hero's hand), gold and skill points. Then Juno shows you what she found in the Warden's
+core: new orders, *GUARD THE GARDEN*, in the hand of **Doctor Morrow**, who ran the Dynamo before her and left for a
+laboratory on the cliffs. Someone is gathering the fallen stars, and planting them. The story continues there.
 
 ## Challenges
 
@@ -107,6 +146,16 @@ waiting: how many nests, whether there's a guardian, the danger at the start, an
 | --- | --- | --- | --- | --- | --- | --- |
 | **The Blighted Hollow** | Elder Rowan | 4 | the Blighted Guardian | Easy (a step above the dens) | 160 gold, 5 skill points | 70 gold, 1 skill point |
 | **Fox Den Raid** | Hunter Fenn | 3 | none | Easy | 70 gold, 2 skill points | 45 gold |
+| **The Back Alleys** | Old Gus | 3 | none | Easy | 110 gold, 3 skill points | 60 gold, 1 skill point |
+| **The Substation** | Tinker Juno | 3 relays | none | Medium | 220 gold, 5 skill points | 90 gold, 1 skill point |
+| **The Dynamo Tower** | Captain Vell | 5 | the Warden | Medium | 300 gold, 6 skill points | 110 gold, 1 skill point |
+
+**Relays** (`Relay`, the substation's goal) are the other kind of fight, Risk of Rain's teleporter three times over.
+Walk up to a relay and press **E** to switch it on; it powers up (32 seconds) only while you stand inside its circle,
+and only one can power up at a time. The horde comes thicker and faster out of the dark round it, in surges at a
+quarter, a half (an elite) and three quarters, but the Blight hates the light: while you hold the circle, whatever
+comes into it is slowed and scorched. Fully powered, a relay lights up for good and its pulse flattens the ordinary
+monsters round it. A bar on the HUD shows how far it's got, and shouts when you've been pushed out.
 
 Challenges can be fought again. Each clear is a **loop**: the next attempt starts more dangerous
 (`Challenge.LOOP_DANGER`), its guardian is tougher, and it pays a little more.
@@ -115,7 +164,9 @@ Challenges can be fought again. Each clear is a **loop**: the next attempt start
 
 A fight (`Run`) happens on a **battlefield** made fresh every time (`Battlefield.make`): a big irregular stretch of
 ground grown cell by cell on a 7x7 grid, so it has open stretches, narrow necks, loops and dead ends, with trees and
-rocks to weave round. You start in a cell on its edge.
+rocks to weave round. You start in a cell on its edge. The monsters know the way round it (`PathField`): one that
+can see you comes straight at you, and one that can't follows the shortest route around the walls, trees, crates and
+nests in between, so hiding behind a wall doesn't leave the horde stuck in a corner.
 
 - **You start from nothing:** level 1, only your sword. Your **equipment** and Ash's **masteries** come with you.
   Every monster drops an XP gem; each level-up pauses the action and offers three cards (`Perk.offer`).
@@ -181,27 +232,37 @@ Items come from chests (the world's, elites', the guardian's, and caches), from 
   a power of its own: *Dawnbreaker* (fights start with Crescent Wave), *Crown of Insight* (+2 rerolls), *Phoenix Mail*
   (revive once per fight), *Tempest Gauntlets* (start with a 3-hit combo), *Windwalkers* (start with the roll), *Ring of
   Fortune* (4 cards per level-up).
-- **The Armory** (the main menu, or **Equipment** on the pause menu): **Enter** equips or takes off, **U** spends gold
+- **The Armory** (**Equipment** on the pause menu, out in the world): **Enter** equips or takes off, **U** spends gold
   to upgrade an item (+12% of its stats per level, up to +10), **X** twice salvages it for gold. The bag holds 60.
 
 ## Saving
 
-The game saves itself whenever something changes in the world (talking, chests, training, buying), when you go into a
+The game saves itself whenever something changes in the world (talking, chests, training, buying, travelling), when you go into a
 fight and come back out, on **Save & Quit**, and when the window closes. A fight in progress isn't saved: closing the
-window mid-fight puts you back at its gate next time. Two files in `~/.spellblade` make up the save:
-`adventure.properties` (the story, chests opened, challenges cleared, skill points, masteries, Bramble's stock, where you
-stood) and `profile.properties` (gold and equipment). `-Dspellblade.home=<folder>` moves them. **New Game** over a save
-asks for a second press, then starts fresh.
+window mid-fight puts you back at its gate next time.
+
+There are five **save slots** (`Saves`), each a separate game with its own story, gold and gear. **New Game** and
+**Load Game** show them as cards: where that game is, what's next, how many challenges it has cleared, its gold, skill
+points and worn gear, and when it was saved. New Game starts on the first empty slot; starting over a slot that holds a
+game asks for a second press first. In Load Game, **X** (twice) deletes a game. **Continue** loads the slot played last.
+
+Each slot is a folder in `~/.spellblade` (`save1` ... `save5`) with two files: `adventure.properties` (the story, chests
+opened, challenges cleared, skill points, masteries, the merchants' stock, which world you're in and where you stood in
+each) and `profile.properties` (gold and equipment). `slots.properties` remembers which slot was played last. A save
+from before there were slots is moved into slot 1 the first time the game starts. `-Dspellblade.home=<folder>` moves
+it all.
 
 ## Layout
 
 | File | What it does |
 | --- | --- |
 | `World.java` | Game state and rules: the main menu, walking around the world (talking, chests, gates), the trainer's and merchant's screens, starting and ending fights, collisions, the pause menu, the Armory, saving. `World` has no drawing code |
+| `Saves.java` | The five save slots: which one is in use, which was played last, what's in each (for the slot screen), deleting one, and moving an old save into slot 1 |
 | `Adventure.java` | The story so far (flags), chests opened, challenges cleared, skill points, masteries, Bramble's stock, where you stood; saving and loading it |
 | `Story.java` | All the words: what everyone says as the story moves on, what the chests hold, the objective line, the intro and Rowan's gift |
-| `Worlds.java` | The explorable world (`forest()`: the camp and the forest around it, its people, chests and gates) and the main menu's clearing |
-| `Challenge.java` | The challenges: who asks, how many nests, the guardian, the danger, the rewards |
+| `Worlds.java` | The explorable worlds (`forest()` and `city()`: their areas, people, chests, gates and roads), their names, and the main menu's clearing |
+| `Challenge.java` | The challenges: who asks, which world, the goal (nests or relays), the guardian, the danger, the rewards |
+| `Relay.java` | A substation relay's state: switched on, powering up, held, done |
 | `Battlefield.java` | Generates a challenge's battlefield: the shape, the nests, the scenery, the caches |
 | `Run.java` | One fight: the director (spawning, the danger clock, elites, swarms, the nests' guards), drops, pickups and caches, the guardian's ring, level-up choices, and the end of the fight |
 | `Mastery.java` | Ranger Ash's permanent upgrades |
@@ -211,20 +272,22 @@ asks for a second press, then starts fresh.
 | `Level.java` | A map: rooms (each one or more rectangles), corridors, people, chests, gates, scenery, and walkable-area collision |
 | `Player.java` | Movement, the combo, dash-through attacks, the roll |
 | `Enemy.java` | Enemy types (`Type` holds the stats), their AI, the guardian, and the nests |
+| `PathField.java` | How monsters find you around walls, crates and nests: one shortest-route map (a flow field) for the whole horde, rebuilt as you move |
 | `Renderer.java` | Draws a frame: the world, then the HUD and whichever screen is up, and the speech box |
 | `WorldRenderer.java` | Draws the world itself: level, shadows, depth-sorted sprites, people, chests, gates, prompts, telegraphs, projectiles, effects, health bars |
 | `LevelView.java` | The level's background: bakes floors, walls, props and scenery into cached image chunks, and glows |
 | `WorldHud.java` | The world's HUD, pause menu, the trainer's and merchant's screens, and the card before a challenge |
 | `RunHud.java` | A fight's HUD, the level-up cards, the fight's pause menu, the results screen, and the perk icons |
-| `TitleScreen.java` / `ArmoryScreen.java` | The main menu (on its dusk backdrop) and the Armory |
+| `TitleScreen.java` / `ArmoryScreen.java` | The main menu (on its dusk backdrop), the save slots, and the Armory |
 | `MenuStyle.java` | The look the screens share: gold headings, gliding selection rows, key caps, glass cards, the serif font |
 | `Minimap.java` | The round radar in the top-right corner |
 | `Dialogue.java` | The speech box's rules: typewriter text, lines that wait for a key or are called out, the voice's chirps |
 | `PixelCanvas.java` / `Sprite.java` / `Art.java` | The graphics engine: a pixel painting canvas, an anchored sprite, and the sprite atlas |
 | `ImportedArt.java` / `res/art/` | The drawn (PixelLab) sprites and the poses made from them |
-| `PeopleArt.java` / `TownArt.java` | Painted sprites for the hero (1.5x finer than the rest), the Hermit, Ash's and Bramble's stalls, Rowan, Fenn and Wren |
+| `PeopleArt.java` / `TownArt.java` / `CityFolk.java` / `Doll.java` | The hero, the forest's people and stalls, and Lumen's (Vell, Juno, Gus, Pip, Sable's and Nix's counters), painted at the drawn art's pixel size and shaded like it by `Doll` |
+| `SwordArt.java` | The hero's swords, drawn apart from him: one for each kind of weapon and rarity, painted at whatever angle a pose holds it |
 | `CreatureArt.java` / `FxArt.java` / `RunArt.java` / `BreakableArt.java` | Painted enemies (the fallback for the drawn ones), effects, pickups and item icons, crates |
-| `Theme.java` / `ThemeArt.java` / `ForestProps.java` / `CityProps.java` / `LabProps.java` | The forest, city and laboratory looks: floor tiles, walls, colours, scenery |
+| `Theme.java` / `ThemeArt.java` / `ForestArt.java` / `CityArt.java` / `LabProps.java` | The forest, city and laboratory looks: floors, walls, colours, scenery (`ForestArt` and `CityArt` paint the forest's and the city's to match the drawn art) |
 | `Music*.java`, `Song*.java`, `Instruments.java`, `Sfx*.java`, `Audio*.java`, `Dsp.java`, `Snd.java` | The sound engine (below) |
 
 ## Graphics engine
@@ -244,12 +307,13 @@ nearest-neighbour filtering so the pixels stay crisp (`Art.SCALE`). The images a
 - **Maps** are baked into 1024x1024 image chunks the first time you look at them, so drawing the map costs a few
   image copies per frame instead of thousands of tile draws. Only the props that animate, glows and everything that
   moves are drawn live.
-- **Depth:** characters, people, chests and gates are sorted by their feet and each gets a ground shadow.
+- **Depth:** characters, people, chests and gates are sorted by their feet and each gets a ground shadow. So are the
+  forest's trees and rocks around the clearings, so a tree hides whoever walks behind it.
 - **Lighting:** a colour wash for the mood (warm dappled light in the forest, blue dusk in the city), glows for
   lamps / neon / fire / lightning, and a vignette at the edges.
-- **Themes:** `Level.theme` picks the art set. The forest has grass, flagstones, dirt paths, hedges and tree canopy;
-  the city (asphalt, sidewalks, brick, rooftops) and the laboratory (pale tile, teal panel walls with hazard bands) are
-  ready for the chapters to come. Enemies change with the theme too: toadstools, foxes, snap-blooms, stump golems,
+- **Themes:** `Level.theme` picks the art set. The forest has grass, cobbles, dirt paths, hedges and tree canopy (see
+  **The forest's look** below), and the city cobbled streets lined with houses (see **The city's look**); the
+  laboratory (pale tile, teal panel walls with hazard bands) is ready for the chapter to come. Enemies change with the theme too: toadstools, foxes, snap-blooms, stump golems,
   the Blight's nests and the Treant in the forest; rats, cats, drones, dumpsters and the Warden robot in the city; green
   oozes, wind-up mice, acid flasks, hulking green mutants and the Mad Scientist in the lab. The shade is the same in all three.
 
@@ -268,14 +332,67 @@ in the frame's pixels) and its frame count. A strip replaces the painted sprite 
 - **The bosses** have one drawn pose each too. Idle, walk, slam and burst are made from it, and so is the second
   phase under half health: the Treant's leaves turn autumn orange, the Warden runs red, and the Mad Scientist's
   coat and hair go a sickly green. A `<theme>_boss2.png` would replace that recolour.
-- **Scenery:** the forest's oak, bush, boulder and stump (`landmark_*`), the Blight's nest (`forest_nest`, which
+- **Scenery:** the forest's oak, pine, bush, boulder and stump (`landmark_*`), the Blight's nest (`forest_nest`, which
   pulses in code), the crates and barrels of all three themes, and the chests. The city and lab crates are recolours of the forest's.
 - The images were cleaned up before they were added: baked-in drop shadows and stray specks removed, each cropped to
   its pixels, and the alley cat's all-black body lightened so it shows on the dark streets.
 
-The hero, the floors, walls, effects, pickups, the forest's people and the city and lab scenery are still painted in code. The hero is
-painted on a grid 1.5x finer than the other painted art (`PeopleArt.Fine`), so their pixels are the same size as the
-monsters' around them.
+### The forest's look
+
+`ForestArt` paints the forest's ground and small scenery to sit with the drawn art: the same 2-unit pixels, a palette
+sampled from the sprites (yellow-green foliage over blue-green shadow, warm bark, olive moss, blue-grey stone), shading in
+a few hard tones with ordered dithering between them, and near-black outlines on anything that stands up off the ground.
+
+- **Floors** are large seamless textures rather than small tiles: grass (broad drifts of light and shade under hundreds
+  of tufts of blades), packed-earth paths, the camp's cobbles (a seamless Voronoi pattern, each stone lit along its top,
+  moss in the gaps), the leafy hedge that walls the clearings in, and the dark canopy beyond. Soft patches of lighter and
+  darker grass and the odd bare spot are scattered over the grass to hide the repeat, and grass grows in over the paths' edges.
+- **Small things on the floor:** flowers, clumps of grass, ferns, clover, fallen leaves, rocks and toadstools, painted at
+  the fine size.
+- **Around the clearings** stand the drawn oak and pine, the oak recoloured for autumn and for deep shade, and the drawn
+  bush, boulder and stump, with a painted log and a ring of toadstools.
+
+### The city's look
+
+`CityArt` paints Lumen the same way: the drawn art's 2-unit pixels, hard tones with dithering between them, outlines on
+anything standing up, and a blue night wash over it all with warm pools of lamplight.
+
+- **Floors:** blue-grey cobbles with weeds in the cracks for the streets, big sandstone slabs for the squares, red brick
+  for the lanes between, granite kerbs at the edges, and beyond them the city's rooftops seen from above (slate and
+  terracotta, gutters, chimneys and lit skylights). The canal is dark water behind a stone kerb. Damp and grime
+  patches, puddles, drains, manholes, litter, weeds and pigeons break up the streets.
+- **House fronts** line the top edge of every street, side by side: timber-framed plaster, brick shops with striped
+  awnings and lit windows full of goods, blue houses with balconies, narrow rose houses with shutters, a pitched roof
+  and chimney on each, some windows lit and some dark. Where the gap behind a street is short, a one-storey shop goes
+  there instead, so a house never hides ground you can walk on. The other edges get crates, barrels, planters and bins.
+  The city's battlefields are built the same way, so a fight there runs through streets between houses.
+- **In the streets:** iron lamps (each lights the ground round it), the square's fountain, planters with little trees,
+  benches, hydrants, market stalls under striped canopies, a greengrocer's cart, the stopped clock tower, Juno's scrap
+  and pylon, signposts at the roads, and the substation's relays (wrapped in the Blight's vines until they're powered),
+  all shaded by a `Doll`.
+
+### The people
+
+The hero and the forest's people are painted in code, but on the drawn art's finer grid (`PeopleArt.Fine`) and shaded
+the way the drawn sprites are, by `Doll`. A doll is drawn in *materials* (skin, hair, cloth, leather, steel, gold), each
+with a hand-picked five-tone ramp that cools into shadow and warms into light, and each part (a leg, an arm, the face)
+is its own piece laid over the ones before. Rendering then lights every piece from the top left, puts a glint on round
+things, darkens what lies just under a piece in front (the head's shadow on the collar), runs a dark line wherever a
+piece overlaps another, and outlines the figure in near-black. Pieces that should read as one shape (a face over the
+head, a fringe over the hair) are joined so no seam shows. Faces are shared: big two-tone eyes with a white glint,
+blush and a small mouth, so the hero, Rowan, Fenn, Wren, the Hermit, Ash and Bramble all look like one cast.
+
+**The sword is its own sprite.** The hero's frames are painted empty-handed, and each records where the sword goes
+(`PeopleArt.Grip`: the middle of the grip, the way the blade points, and whether it's behind him, resting at his hip or
+held out in front of him while we see his back, or in his fist). `SwordArt` paints swords from a description of their
+parts (`SwordArt.Kind`: blade length, width and curve, guard, grip, pommel, their materials, and a colour for glowing
+runes) at whatever angle a pose needs, with crisp pixel lines rather than by rotating a picture, and keeps each one
+once painted. The hero carries the sword for the weapon he wears: its name's last word gives the shape (a plain
+*Sword*, a short broad *Blade*, a curved *Saber*, a *Longsword* with a wide cross-guard) and its rarity the metal
+(iron, steel, blue steel with a gold guard, violet steel with glowing runes, sunsteel with a ruby). With nothing worn
+he carries the traveller's sword. To add a sword, add a `Kind`.
+
+The lab's floors, walls and scenery, the effects and the pickups are still the older painted art.
 
 To add a sprite: paint it in the matching `*Art` class, register it under a name, and ask the atlas for that name where
 it's drawn. To add a theme: add it to the `Theme` enum, give it tiles and props in `ThemeArt`, and draw the enemies
@@ -290,18 +407,27 @@ fails) the game just runs silent; if something goes wrong in one block the audio
 The sound effects are painted in about half a second on the audio thread, in parallel with opening the speakers, so the window
 never waits (on a Mac the very first open of the speakers can take a few seconds; music and sounds start when it's ready).
 
-- **The music** is four pieces, each 16 bars, written by hand as notes over a chord progression, played live on the synthesised
+- **The music** is eight pieces, of 16 or 32 bars, written by hand as notes over a chord progression, played live on the synthesised
   instruments. Every piece is split into *layers* (pad, bass, melody, drums...) and each layer has a volume for each mood, so the
   score changes with the action without ever restarting or losing the beat:
-  - **Forest** (G major, 96 bpm): a flute tune over harp and a warm pad. In a fight, frame drums, shakers, fiddles, a driving bass
-    and a lower echo of the tune join in.
-  - **City** (A minor, 100 bpm): an electric-piano tune over a synth pad and echoing arpeggios; the fight adds a four-on-the-floor
-    beat, a driving bass and a lead.
+  - **Forest** (G major, 96 bpm): a flute tune over harp and a warm pad, for wandering the forest.
+  - **Forest battle** (D minor, 152 bpm, 32 bars), in the spirit of Kingdom Hearts' battle music: a driving piano ostinato and
+    staccato strings in 3+3+2, a soaring string melody, a heroic brass strain in the relative major, and orchestral drums with
+    rolls at the end of each phrase. A fight opens on four bars of piano alone; while you're taking a nest down, horns swell
+    under it and the cymbals open up. The piano is its own synthesised voice: stretched partials that each fade at their own
+    rate, a felt hammer, and a damper.
+  - **City** (A minor, 100 bpm): an electric-piano tune over a synth pad and echoing arpeggios, for walking Lumen's streets.
+  - **City battle** (A minor, 148 bpm, 32 bars): Kingdom Hearts' town fights by way of a jazz club. Electric piano comping,
+    a walking bass and syncopated stabs under a string melody that grows out of the city's own tune, then a heroic brass
+    strain in the relative major, over the city's drum machine with a swung hat. It opens on the piano alone, and swells
+    (horns, an arpeggio, open hats) while you hold a relay or take a nest down.
   - **Laboratory** (D dorian, 108 bpm): a theremin over a synth pad and a ticking clock, with a fight beat and lead.
   - **Forest boss** (E minor, 120 bpm, brass and war drums), **city boss** (D minor, 128 bpm, saw lead and electronic beat) and the **Mad Scientist** (A harmonic minor, 144 bpm, a frantic organ toccata over growling bass).
     Below half health the boss music brings in a second wave of parts (`Mood.PEAK`).
-  - `MusicDirector` picks the piece and mood from the game state: calm while exploring, the fight mood once a fight gets going,
-    the boss piece for the guardian, silence after a defeat; pausing (and the world's screens) muffles and lowers the music.
+  - `MusicDirector` picks the piece and mood from the game state: calm while exploring, the world's battle theme in a fight
+    (the lab uses its own theme's fight mood until it gets one), the boss piece for the guardian, the calm theme
+    again once the way home is open, silence after a defeat; pausing (and the world's screens) muffles and lowers the music.
+    An important conversation *hushes* it: the song fades out but keeps its place, and picks up from there when the talk ends.
 - **Sound effects** (`Snd` lists them all): swings, hits, skills, enemy tells and attacks, deaths, boss events, nests,
   jingles, menu blips, footsteps (soft on forest grass, hard on the camp's paving and in the city). Each has several variants that are taken
   in turn, plus a little random pitch, so nothing ever repeats exactly. Enemy sounds are placed in the stereo field and get quieter
@@ -323,10 +449,12 @@ first number in `Snd.java`. Default volumes are in `AudioSettings.java`; the sav
 
 ## Where to tune things
 
-- **The world:** areas, people, chests and gates are placed in `Worlds.forest()`; what everyone says, what the chests
-  hold and the objectives are in `Story.java`.
+- **The worlds:** areas, people, chests, gates and roads are placed in `Worlds.forest()` and `Worlds.city()`; what
+  everyone says, what the chests hold, the objectives and when each road opens are in `Story.java`.
 - **Challenges:** nests, danger, rewards, the favoured monster and the battlefield's size are the arguments in
   `Challenge.java`; `Challenge.LOOP_DANGER` is what each clear adds.
+- **Relays:** how long one takes to power up, its circle, and how often its light scorches what's in it are `Relay.CHARGE_TIME`,
+  `RADIUS` and `ZAP_EVERY`; how much thicker the horde comes while one powers up is in `Run.direct`.
 - **Battlefield shape:** `Battlefield.GRID` / `CELL`, the passage widths and the scenery counts in `Battlefield.make`.
 - **Fight difficulty:** `Run.threat` (the danger clock), `Run.hpMult` / `dmgMult` / `population`, `Run.pickType`,
   `ELITE_EVERY` / `SWARM_EVERY`, the guardian's multipliers in `Run.spawnBoss`; nests: `Enemy.Type.NEST` (health),
